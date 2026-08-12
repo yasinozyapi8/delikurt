@@ -5,11 +5,11 @@
 
 [app]
 
-# (str) Title of your application
-title = My Application
+# Eskisi: title = My Application
+title = Stok Takip
 
-# (str) Package name
-package.name = myapp
+# Eskisi: package.name = myapp (Türkçe karakter ve boşluk olmadan küçük harfle yazılmalı)
+package.name = stoktakip
 
 # (str) Package domain (needed for android/ios packaging)
 package.domain = org.test
