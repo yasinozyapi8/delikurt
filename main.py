@@ -1,232 +1,288 @@
-import sqlite3
-from datetime import datetime
+import os
 from kivy.app import App
+from kivy.utils import platform
+from kivy.clock import Clock
+from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
-from kivy.uix.label import Label
-from kivy.uix.button import Button
-from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
+from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
+from kivy.uix.button import Button
 from kivy.uix.popup import Popup
-from kivy.core.window import Window
 
-# Mobil ekran arka plan rengi
-Window.clearcolor = (0.95, 0.96, 0.98, 1)
+# --- Android İzin Kontrolü ---
+def android_izinlerini_iste():
+    if platform == 'android':
+        try:
+            from android.permissions import request_permissions, Permission
+            request_permissions([
+                Permission.CAMERA,
+                Permission.READ_EXTERNAL_STORAGE,
+                Permission.WRITE_EXTERNAL_STORAGE
+            ])
+        except Exception as e:
+            print("İzin alma hatası:", e)
 
-def veritabani_kur():
-    conn = sqlite3.connect("yedek_parca.db")
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS stok (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            parca_kodu TEXT UNIQUE NOT NULL,
-            barkod_no TEXT UNIQUE,
-            parca_adi TEXT NOT NULL,
-            kategori TEXT,
-            miktar INTEGER DEFAULT 0,
-            kritik_seviye INTEGER DEFAULT 5,
-            raf_konumu TEXT DEFAULT 'Belirtilmedi'
-        )
-    ''')
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS stok_hareketleri (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            parca_kodu TEXT NOT NULL,
-            islem_tipi TEXT NOT NULL,
-            miktar INTEGER NOT NULL,
-            tarih TEXT NOT NULL,
-            aciklama TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
+# --- Basılı Tutma (Long Press) Özellikli Buton ---
+class BasiliTutulanItem(Button):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._long_press_event = None
 
-class StokMobilApp(App):
-    def build(self):
-        veritabani_kur()
-        self.title = "Stok Takip Mobile"
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            # 0.8 saniye basılı tutulursa uzun basma tetiklenir
+            self._long_press_event = Clock.schedule_once(self._uzun_basildi, 0.8)
+        return super().on_touch_down(touch)
 
-        main_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+    def on_touch_up(self, touch):
+        if self._long_press_event:
+            self._long_press_event.cancel()
+        return super().on_touch_up(touch)
 
-        # Üst Başlık Barı
-        header = Label(
-            text="📱 YEDEK PARÇA STOK TAKİP",
-            font_size='20sp',
-            bold=True,
-            size_hint_y=None,
-            height=50,
-            color=(0.17, 0.24, 0.31, 1)
-        )
-        main_layout.add_widget(header)
+    def _uzun_basildi(self, dt):
+        if hasattr(self, 'on_long_press_callback') and self.on_long_press_callback:
+            self.on_long_press_callback(self)
 
-        # Arama ve Aksiyon Barı
-        top_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=45, spacing=8)
+
+# --- Örnek Veritabanı / Liste Verisi ---
+VERITABANI = [
+    {"kod": "BRK-001", "ad": "Rulman 6204", "raf": "A-12", "stok": 15},
+    {"kod": "BRK-002", "ad": "V-Kayışı A-42", "raf": "B-03", "stok": 8},
+]
+
+
+# --- Ana Liste Ekranı ---
+class AnaEkran(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         
-        self.txt_arama = TextInput(
-            hint_text='Ara / Barkod...',
-            multiline=False,
-            font_size='15sp'
-        )
-        self.txt_arama.bind(text=self.stok_listele)
-        top_bar.add_widget(self.txt_arama)
+        main_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        
+        # 1. Üst Başlık
+        main_layout.add_widget(Label(text="STOK TAKİP SİSTEMİ", font_size='20sp', size_hint_y=0.08, bold=True))
 
-        # Kamera / Barkod Butonu
-        btn_kamera = Button(
-            text='📷 Kamera',
-            background_color=(0.2, 0.6, 0.86, 1),
-            size_hint_x=0.3,
-            bold=True
-        )
-        btn_kamera.bind(on_press=self.kamera_ac)
-        top_bar.add_widget(btn_kamera)
+        # 2. Barkod Arama & Kamera & Elle Girdi Alanı
+        arama_box = BoxLayout(orientation='horizontal', size_hint_y=0.1, spacing=5)
+        
+        self.txt_barkod_ara = TextInput(hint_text='Barkod / Parça Ara veya Gir...', multiline=False)
+        btn_ara = Button(text='🔍 Ara', size_hint_x=0.25)
+        btn_ara.bind(on_release=self.barkod_ara)
+        
+        btn_kamera = Button(text='📷', size_hint_x=0.2)
+        btn_kamera.bind(on_release=self.kamera_ac)
 
-        # Yeni Parça Ekle Butonu
-        btn_ekle = Button(
-            text='+ Yeni',
-            background_color=(0.15, 0.68, 0.37, 1),
-            size_hint_x=0.25,
-            bold=True
-        )
-        btn_ekle.bind(on_press=self.yeni_parca_popup)
-        top_bar.add_widget(btn_ekle)
+        arama_box.add_widget(self.txt_barkod_ara)
+        arama_box.add_widget(btn_ara)
+        arama_box.add_widget(btn_kamera)
+        main_layout.add_widget(arama_box)
 
-        main_layout.add_widget(top_bar)
+        # 3. Parça Listesi (ScrollView)
+        self.scroll = ScrollView(size_hint=(1, 0.72))
+        self.liste_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        self.liste_layout.bind(minimum_height=self.liste_layout.setter('height'))
+        self.scroll.add_widget(self.liste_layout)
+        main_layout.add_widget(self.scroll)
 
-        # Stok Listesi
-        scroll = ScrollView()
-        self.list_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
-        self.list_layout.bind(minimum_height=self.list_layout.setter('height'))
-        scroll.add_widget(self.list_layout)
+        # 4. Alt Menü (Yedek Parça Ekle Butonu)
+        alt_box = BoxLayout(orientation='horizontal', size_hint_y=0.1)
+        btn_yeni_ekle = Button(text='➕ Yeni Yedek Parça Ekle', background_color=(0.2, 0.7, 0.2, 1))
+        btn_yeni_ekle.bind(on_release=lambda x: setattr(self.manager, 'current', 'ekle_ekrani'))
+        alt_box.add_widget(btn_yeni_ekle)
+        main_layout.add_widget(alt_box)
 
-        main_layout.add_widget(scroll)
+        self.add_widget(main_layout)
+        self.listeyi_guncelle()
 
-        self.stok_listele()
-        return main_layout
+    def listeyi_guncelle(self, filtre=""):
+        self.liste_layout.clear_widgets()
+        
+        for item in VERITABANI:
+            if filtre and (filtre.lower() not in item['kod'].lower() and filtre.lower() not in item['ad'].lower()):
+                continue
 
-    def stok_listele(self, *args):
-        self.list_layout.clear_widgets()
-        arama = self.txt_arama.text.strip()
-
-        conn = sqlite3.connect("yedek_parca.db")
-        cursor = conn.cursor()
-
-        if arama:
-            query = "SELECT parca_kodu, barkod_no, parca_adi, miktar, kritik_seviye, raf_konumu FROM stok WHERE parca_kodu LIKE ? OR parca_adi LIKE ? OR barkod_no LIKE ?"
-            cursor.execute(query, (f"%{arama}%", f"%{arama}%", f"%{arama}%"))
-        else:
-            cursor.execute("SELECT parca_kodu, barkod_no, parca_adi, miktar, kritik_seviye, raf_konumu FROM stok")
-
-        rows = cursor.fetchall()
-        conn.close()
-
-        for row in rows:
-            kod, barkod, ad, miktar, kritik, raf = row
-            durum_renk = (0.92, 0.11, 0.14, 1) if miktar <= kritik else (0.1, 0.7, 0.3, 1)
-
-            card = BoxLayout(orientation='vertical', size_hint_y=None, height=110, padding=8, spacing=5)
+            btn_text = f"📦 {item['ad']}\nKod: {item['kod']} | Raf: {item['raf']} | Stok: {item['stok']} Adet"
             
-            row1 = BoxLayout(orientation='horizontal')
-            lbl_ad = Label(text=f"[b]{ad}[/b] ({kod})", markup=True, font_size='16sp', color=(0.1, 0.1, 0.1, 1), halign='left')
-            lbl_ad.bind(size=lbl_ad.setter('text_size'))
+            btn = BasiliTutulanItem(
+                text=btn_text,
+                size_hint_y=None,
+                height=70,
+                halign='left',
+                valign='middle'
+            )
+            btn.text_size = (btn.width, None)
+            btn.bind(size=lambda s, w: setattr(s, 'text_size', (s.width - 20, None)))
             
-            lbl_miktar = Label(text=f"Stok: [b]{miktar}[/b]", markup=True, font_size='18sp', color=durum_renk, size_hint_x=0.4)
-            row1.add_widget(lbl_ad)
-            row1.add_widget(lbl_miktar)
-
-            row2 = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None, height=40)
-            lbl_raf = Label(text=f"Raf: {raf}\nBarkod: {barkod}", font_size='11sp', color=(0.5, 0.5, 0.5, 1))
+            # Veriyi butona bağla
+            btn.item_data = item
+            btn.on_long_press_callback = self.duzenleme_popup_ac
             
-            btn_arttir = Button(text='➕ 1 Ekle', background_color=(0.15, 0.68, 0.37, 1), bold=True)
-            btn_arttir.bind(on_press=lambda x, k=kod: self.stok_degistir(k, 1))
+            self.liste_layout.add_widget(btn)
 
-            btn_azalt = Button(text='➖ 1 Düş', background_color=(0.75, 0.22, 0.17, 1), bold=True)
-            btn_azalt.bind(on_press=lambda x, k=kod: self.stok_degistir(k, -1))
-
-            row2.add_widget(lbl_raf)
-            row2.add_widget(btn_arttir)
-            row2.add_widget(btn_azalt)
-
-            card.add_widget(row1)
-            card.add_widget(row2)
-
-            self.list_layout.add_widget(card)
-
-    def stok_degistir(self, parca_kodu, miktar_degisimi):
-        conn = sqlite3.connect("yedek_parca.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT miktar FROM stok WHERE parca_kodu = ?", (parca_kodu,))
-        res = cursor.fetchone()
-
-        if res:
-            mevcut = res[0]
-            yeni = mevcut + miktar_degisimi
-            if yeni >= 0:
-                cursor.execute("UPDATE stok SET miktar = ? WHERE parca_kodu = ?", (yeni, parca_kodu))
-                
-                tarih = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                log_tipi = 'GİRİŞ' if miktar_degisimi > 0 else 'ÇIKIŞ'
-                cursor.execute("INSERT INTO stok_hareketleri (parca_kodu, islem_tipi, miktar, tarih, aciklama) VALUES (?, ?, ?, ?, ?)",
-                               (parca_kodu, log_tipi, abs(miktar_degisimi), tarih, 'Mobil Arayüz İşlemi'))
-                conn.commit()
-
-        conn.close()
-        self.stok_listele()
+    def barkod_ara(self, instance):
+        self.listeyi_guncelle(self.txt_barkod_ara.text)
 
     def kamera_ac(self, instance):
-        """Kamera / Barkod okuyucu modülünü çalıştırır."""
-        try:
-            from plyer import barcode
-            barcode.scan(on_complete=self.barkod_okundu)
-        except Exception:
-            popup = Popup(
-                title='Kamera Bilgisi',
-                content=Label(text='Barkod okutmak için arama alanına\nel terminali ile de barkod girebilirsiniz.'),
-                size_hint=(0.8, 0.4)
-            )
-            popup.open()
+        # Kamera Ekranına Geçiş
+        self.manager.current = 'kamera_ekrani'
 
-    def barkod_okundu(self, result):
-        if result and not result.cancelled:
-            self.txt_arama.text = result.data.strip()
+    # Uzun basılınca açılacak Düzenleme / Silme Menüsü
+    def duzenleme_popup_ac(self, item_button):
+        data = item_button.item_data
 
-    def yeni_parca_popup(self, instance):
         content = BoxLayout(orientation='vertical', spacing=10, padding=10)
         
-        txt_kod = TextInput(hint_text='Parça Kodu*', multiline=False)
-        txt_ad = TextInput(hint_text='Parça Adı*', multiline=False)
-        txt_kat = TextInput(hint_text='Kategori', multiline=False)
-        txt_mkt = TextInput(hint_text='Başlangıç Miktarı (0)', input_filter='int', multiline=False)
-        
-        content.add_widget(txt_kod)
+        # Alanlar
+        txt_ad = TextInput(text=data['ad'], multiline=False)
+        txt_kod = TextInput(text=data['kod'], multiline=False)
+        txt_raf = TextInput(text=data['raf'], multiline=False)
+        txt_stok = TextInput(text=str(data['stok']), multiline=False, input_filter='int')
+
+        content.add_widget(Label(text="Parça Adı:"))
         content.add_widget(txt_ad)
-        content.add_widget(txt_kat)
-        content.add_widget(txt_mkt)
+        content.add_widget(Label(text="Barkod / Kod:"))
+        content.add_widget(txt_kod)
+        content.add_widget(Label(text="Raf Kodu:"))
+        content.add_widget(txt_raf)
+        content.add_widget(Label(text="Stok Adedi:"))
+        
+        # Stok arttır / azalt butonlu alan
+        stok_box = BoxLayout(orientation='horizontal', spacing=5)
+        btn_e = Button(text='➖', size_hint_x=0.2)
+        btn_a = Button(text='➕', size_hint_x=0.2)
+        
+        def eksilt(x):
+            val = int(txt_stok.text or 0)
+            if val > 0: txt_stok.text = str(val - 1)
+        def arttir(x):
+            val = int(txt_stok.text or 0)
+            txt_stok.text = str(val + 1)
+            
+        btn_e.bind(on_release=eksilt)
+        btn_a.bind(on_release=arttir)
+        
+        stok_box.add_widget(btn_e)
+        stok_box.add_widget(txt_stok)
+        stok_box.add_widget(btn_a)
+        content.add_widget(stok_box)
 
-        popup = Popup(title='Yeni Parça Ekle', content=content, size_hint=(0.9, 0.6))
+        # Kaydet ve Sil Butonları
+        buton_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=0.4)
+        btn_kaydet = Button(text='✏️ Güncelle', background_color=(0, 0.6, 1, 1))
+        btn_sil = Button(text='🗑️ Sil', background_color=(1, 0.2, 0.2, 1))
+        
+        popup = Popup(title='Parça Düzenle / Sil', content=content, size_hint=(0.9, 0.85))
 
-        def kaydet(btn):
-            kod = txt_kod.text.strip()
-            ad = txt_ad.text.strip()
-            if kod and ad:
-                kat = txt_kat.text.strip() or 'Genel'
-                mkt = int(txt_mkt.text.strip() or 0)
-                try:
-                    conn = sqlite3.connect("yedek_parca.db")
-                    cursor = conn.cursor()
-                    cursor.execute("INSERT INTO stok (parca_kodu, barkod_no, parca_adi, kategori, miktar) VALUES (?, ?, ?, ?, ?)",
-                                   (kod, kod, ad, kat, mkt))
-                    conn.commit()
-                    conn.close()
-                    popup.dismiss()
-                    self.stok_listele()
-                except sqlite3.IntegrityError:
-                    pass
+        def kaydet_action(x):
+            data['ad'] = txt_ad.text
+            data['kod'] = txt_kod.text
+            data['raf'] = txt_raf.text
+            data['stok'] = int(txt_stok.text or 0)
+            self.listeyi_guncelle()
+            popup.dismiss()
 
-        btn_kaydet = Button(text='Kaydet', background_color=(0.15, 0.68, 0.37, 1), size_hint_y=None, height=45)
-        btn_kaydet.bind(on_press=kaydet)
-        content.add_widget(btn_kaydet)
+        def sil_action(x):
+            VERITABANI.remove(data)
+            self.listeyi_guncelle()
+            popup.dismiss()
+
+        btn_kaydet.bind(on_release=kaydet_action)
+        btn_sil.bind(on_release=sil_action)
+
+        buton_box.add_widget(btn_kaydet)
+        buton_box.add_widget(btn_sil)
+        content.add_widget(buton_box)
 
         popup.open()
 
+
+# --- Parça Ekleme Ekranı (Raf Girişi Dahil) ---
+class ParcaEkleEkrani(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
+        layout = BoxLayout(orientation='vertical', padding=15, spacing=10)
+        
+        layout.add_widget(Label(text="YENİ YEDEK PARÇA EKLE", font_size='18sp', bold=True))
+
+        self.txt_ad = TextInput(hint_text='Parça Adı', multiline=False)
+        self.txt_kod = TextInput(hint_text='Barkod / Parça Kodu', multiline=False)
+        self.txt_raf = TextInput(hint_text='Raf / Lokasyon Kodu (Örn: A-12)', multiline=False)
+        self.txt_stok = TextInput(hint_text='Başlangıç Stok Adedi', multiline=False, input_filter='int')
+
+        layout.add_widget(Label(text="Parça Adı:"))
+        layout.add_widget(self.txt_ad)
+        layout.add_widget(Label(text="Barkod:"))
+        layout.add_widget(self.txt_kod)
+        layout.add_widget(Label(text="Raf Numarası:"))
+        layout.add_widget(self.txt_raf)
+        layout.add_widget(Label(text="Stok Adedi:"))
+        layout.add_widget(self.txt_stok)
+
+        btn_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=0.3)
+        btn_kaydet = Button(text='💾 Kaydet', background_color=(0.2, 0.8, 0.2, 1))
+        btn_iptal = Button(text='❌ İptal', background_color=(0.8, 0.2, 0.2, 1))
+
+        btn_kaydet.bind(on_release=self.kaydet)
+        btn_iptal.bind(on_release=lambda x: setattr(self.manager, 'current', 'ana_ekran'))
+
+        btn_box.add_widget(btn_kaydet)
+        btn_box.add_widget(btn_iptal)
+        layout.add_widget(btn_box)
+
+        self.add_widget(layout)
+
+    def kaydet(self, instance):
+        if self.txt_ad.text and self.txt_kod.text:
+            yeni_parca = {
+                "kod": self.txt_kod.text,
+                "ad": self.txt_ad.text,
+                "raf": self.txt_raf.text or "-",
+                "stok": int(self.txt_stok.text or 0)
+            }
+            VERITABANI.append(yeni_parca)
+            
+            # Ana ekrandaki listeyi yenile
+            self.manager.get_screen('ana_ekran').listeyi_guncelle()
+            
+            # Formu temizle
+            self.txt_ad.text = ""
+            self.txt_kod.text = ""
+            self.txt_raf.text = ""
+            self.txt_stok.text = ""
+            
+            self.manager.current = 'ana_ekran'
+
+
+# --- Kamera Ekranı (Placeholder / Entegrasyon) ---
+class KameraEkrani(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        
+        layout.add_widget(Label(text="📷 BARKO TARA", font_size='18sp'))
+        layout.add_widget(Label(text="[Kamera Görünümü]\n(Cihaz kamerasını barkoda tutun)", halign='center'))
+
+        btn_geri = Button(text='🔙 Geri Dön', size_hint_y=0.15)
+        btn_geri.bind(on_release=lambda x: setattr(self.manager, 'current', 'ana_ekran'))
+        layout.add_widget(btn_geri)
+
+        self.add_widget(layout)
+
+
+# --- Uygulama Sınıfı ---
+class StokTakipApp(App):
+    def build(self):
+        # Android İzinlerini Başlangıçta İste
+        android_izinlerini_iste()
+
+        sm = ScreenManager()
+        sm.add_widget(AnaEkran(name='ana_ekran'))
+        sm.add_widget(ParcaEkleEkrani(name='ekle_ekrani'))
+        sm.add_widget(KameraEkrani(name='kamera_ekrani'))
+        return sm
+
+
 if __name__ == '__main__':
-    StokMobilApp().run()
+    StokTakipApp().run()
