@@ -52,7 +52,7 @@ requirements = python3,kivy
 #presplash.filename = %(source.dir)s/data/presplash.png
 
 # (str) Icon of the application
-#icon.filename = %(source.dir)s/data/icon.png
+icon.filename = %(source.dir)s/data/app_icon.png
 
 # (list) Supported orientations
 # Valid options are: landscape, portrait, portrait-reverse, landscape-reverse, or all
@@ -103,7 +103,7 @@ fullscreen = 0
 
 # (list) Permissions
 # (See https://python-for-android.readthedocs.io/en/latest/buildoptions.html for all the supported syntaxes and properties)
-#android.permissions = android.permission.INTERNET, (name=android.permission.WRITE_EXTERNAL_STORAGE;maxSdkVersion=18)
+android.permissions = INTERNET, CAMERA, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE
 
 # (list) features (adds uses-feature -tags to manifest)
 #android.features = android.hardware.usb.host
@@ -241,7 +241,7 @@ android.accept_sdk_license = True
 #android.ouya.category = GAME
 
 # (str) Filename of OUYA Console icon. It must be a 732x412 png image.
-#android.ouya.icon.filename = %(source.dir)s/data/ouya_icon.png
+#android.ouya.icon.filename = %(source.dir)s/data/app_icon.png
 
 # (str) XML file to include as an intent filters in <activity> tag
 #android.manifest.intent_filters =
