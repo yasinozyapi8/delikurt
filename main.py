@@ -13,7 +13,11 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 from kivy.uix.camera import Camera
-from kivy.graphics import PushMatrix, PopMatrix, Rotate
+
+# Bilgisayarda Telefon Boyutunda Simüle Etmek İçin (360x640)
+from kivy.config import Config
+Config.set('graphics', 'width', '360')
+Config.set('graphics', 'height', '640')
 
 # --- Arka Plan Rengini Ayarla (Modern Koyu Antrasit) ---
 Window.clearcolor = (0.12, 0.15, 0.18, 1)
@@ -57,7 +61,7 @@ def verileri_kaydet():
         print("Veri kaydetme hatası:", e)
 
 
-# --- Android İzin Kontrolü ---
+# --- Android İzin Kontrolü (Sadece Android'de Çalışır) ---
 def android_izinlerini_iste():
     if platform == 'android':
         try:
@@ -112,7 +116,7 @@ class AnaEkran(Screen):
         arama_box = BoxLayout(orientation='horizontal', size_hint_y=0.09, spacing=6)
         
         self.txt_barkod_ara = TextInput(
-            hint_text='Barkod, Parça Kodu veya Adı Ara...', 
+            hint_text='Barkod veya Parça Ara...', 
             multiline=False,
             background_color=(0.9, 0.9, 0.9, 1)
         )
@@ -306,7 +310,7 @@ class AnaEkran(Screen):
         popup.open()
 
 
-# --- Parça Ekleme Ekranı (İdeal Boyutlandırılmış ve Dengeli Form) ---
+# --- Parça Ekleme Ekranı ---
 class ParcaEkleEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -387,7 +391,7 @@ class ParcaEkleEkrani(Screen):
             self.manager.current = 'ana_ekran'
 
 
-# --- Doğal Oranını Koruyan Dikey Kamera Ekranı ---
+# --- Düzeltilmiş Güvenli Kamera Ekranı ---
 class KameraEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -395,23 +399,20 @@ class KameraEkrani(Screen):
         
         self.layout.add_widget(Label(text="BARKOD TARA", font_size='18sp', size_hint_y=0.08, bold=True))
 
-        # keep_ratio=True ile kameranın basılması/yayılması engellendi
-        self.camera = Camera(
-            play=False, 
-            resolution=(640, 480), 
-            allow_stretch=True, 
-            keep_ratio=True, 
-            size_hint=(1, 0.80)
-        )
-        
-        with self.camera.canvas.before:
-            PushMatrix()
-            self.rot = Rotate(angle=-90, origin=self.camera.center)
-        with self.camera.canvas.after:
-            PopMatrix()
-
-        self.camera.bind(pos=self._rotation_merkezini_guncelle, size=self._rotation_merkezini_guncelle)
-        self.layout.add_widget(self.camera)
+        # Kamera Bilgisayarda Çökmesin diye Try-Except Yapısı
+        try:
+            self.camera = Camera(
+                play=False, 
+                resolution=(640, 480), 
+                allow_stretch=True, 
+                keep_ratio=True, 
+                size_hint=(1, 0.80)
+            )
+            self.layout.add_widget(self.camera)
+        except Exception as e:
+            print("Kamera yükleme uyarısı:", e)
+            self.camera = None
+            self.layout.add_widget(Label(text="Kamera bilgisayarda/cihazda başlatılamadı.", size_hint=(1, 0.80)))
 
         btn_geri = Button(
             text='Geri Dön', 
@@ -426,14 +427,13 @@ class KameraEkrani(Screen):
 
         self.add_widget(self.layout)
 
-    def _rotation_merkezini_guncelle(self, instance, value):
-        self.rot.origin = self.camera.center
-
     def on_enter(self):
-        self.camera.play = True
+        if self.camera:
+            self.camera.play = True
 
     def on_leave(self):
-        self.camera.play = False
+        if self.camera:
+            self.camera.play = False
 
     def geri_don(self, instance):
         self.manager.current = 'ana_ekran'
