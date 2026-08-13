@@ -41,7 +41,7 @@ def verileri_yukle():
         except Exception as e:
             print("Veri okuma hatası:", e)
 
-    # Varsayılan Örnek Veriler (Kritik Stok Dahil)
+    # Varsayılan Örnek Veriler
     VERITABANI = [
         {"parca_kodu": "BV-1430", "barkod": "869000111", "ad": "Blok Vidası 1,4x3,0mm", "raf": "A-12", "stok": 3, "kritik_stok": 5},
         {"parca_kodu": "PRC-002", "barkod": "869000222", "ad": "V-Kayışı A-42", "raf": "B-03", "stok": 8, "kritik_stok": 3},
@@ -169,7 +169,6 @@ class AnaEkran(Screen):
             kritik_sınıri = item.get('kritik_stok', 0)
             is_kritik = stok_adedi <= kritik_sınıri
 
-            # Kritik Stok Uyarısına Göre Renk Değişimi
             bg_color = (0.55, 0.15, 0.15, 1) if is_kritik else (0.18, 0.22, 0.28, 1)
             uyari_metni = " [⚠️ KRİTİK STOK!]" if is_kritik else ""
 
@@ -307,12 +306,12 @@ class AnaEkran(Screen):
         popup.open()
 
 
-# --- Parça Ekleme Ekranı ---
+# --- Parça Ekleme Ekranı (İdeal Boyutlandırılmış ve Dengeli Form) ---
 class ParcaEkleEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
-        main_layout = BoxLayout(orientation='vertical', padding=15, spacing=10)
+        main_layout = BoxLayout(orientation='vertical', padding=18, spacing=10)
         
         main_layout.add_widget(Label(
             text="YENİ YEDEK PARÇA EKLE", 
@@ -320,40 +319,41 @@ class ParcaEkleEkrani(Screen):
             bold=True, 
             color=(0.3, 0.7, 1, 1),
             size_hint_y=None,
-            height=30
+            height=35
         ))
 
-        form_layout = GridLayout(cols=1, spacing=3, size_hint_y=0.82)
+        form_layout = BoxLayout(orientation='vertical', spacing=6, size_hint_y=0.78)
 
-        form_layout.add_widget(Label(text="Parça Adı:", size_hint_y=None, height=20, halign='left'))
-        self.txt_ad = TextInput(hint_text='Örn: Rulman 6204', multiline=False, size_hint_y=None, height=38)
+        form_layout.add_widget(Label(text="Parça Adı:", font_size='14sp', size_hint_y=None, height=22, halign='left'))
+        self.txt_ad = TextInput(hint_text='Örn: Rulman 6204', multiline=False, size_hint_y=None, height=48, font_size='15sp')
         form_layout.add_widget(self.txt_ad)
 
-        form_layout.add_widget(Label(text="Parça Kodu:", size_hint_y=None, height=20, halign='left'))
-        self.txt_parca_kodu = TextInput(hint_text='Örn: PRC-001', multiline=False, size_hint_y=None, height=38)
+        form_layout.add_widget(Label(text="Parça Kodu:", font_size='14sp', size_hint_y=None, height=22, halign='left'))
+        self.txt_parca_kodu = TextInput(hint_text='Örn: PRC-001', multiline=False, size_hint_y=None, height=48, font_size='15sp')
         form_layout.add_widget(self.txt_parca_kodu)
 
-        form_layout.add_widget(Label(text="Barkod:", size_hint_y=None, height=20, halign='left'))
-        self.txt_barkod = TextInput(hint_text='Örn: 86900012345', multiline=False, size_hint_y=None, height=38)
+        form_layout.add_widget(Label(text="Barkod:", font_size='14sp', size_hint_y=None, height=22, halign='left'))
+        self.txt_barkod = TextInput(hint_text='Örn: 86900012345', multiline=False, size_hint_y=None, height=48, font_size='15sp')
         form_layout.add_widget(self.txt_barkod)
 
-        form_layout.add_widget(Label(text="Raf Numarası:", size_hint_y=None, height=20, halign='left'))
-        self.txt_raf = TextInput(hint_text='Örn: A-12', multiline=False, size_hint_y=None, height=38)
+        form_layout.add_widget(Label(text="Raf Numarası:", font_size='14sp', size_hint_y=None, height=22, halign='left'))
+        self.txt_raf = TextInput(hint_text='Örn: A-12', multiline=False, size_hint_y=None, height=48, font_size='15sp')
         form_layout.add_widget(self.txt_raf)
 
-        form_layout.add_widget(Label(text="Mevcut Stok Adedi:", size_hint_y=None, height=20, halign='left'))
-        self.txt_stok = TextInput(hint_text='Örn: 10', multiline=False, input_filter='int', size_hint_y=None, height=38)
+        form_layout.add_widget(Label(text="Mevcut Stok Adedi:", font_size='14sp', size_hint_y=None, height=22, halign='left'))
+        self.txt_stok = TextInput(hint_text='Örn: 10', multiline=False, input_filter='int', size_hint_y=None, height=48, font_size='15sp')
         form_layout.add_widget(self.txt_stok)
 
-        form_layout.add_widget(Label(text="Kritik Stok Uyarısı Sınırı:", size_hint_y=None, height=20, halign='left'))
-        self.txt_kritik_stok = TextInput(hint_text='Örn: 5 (Bu sayının altına düşerse uyarır)', multiline=False, input_filter='int', size_hint_y=None, height=38)
+        form_layout.add_widget(Label(text="Kritik Stok Uyarısı Sınırı:", font_size='14sp', size_hint_y=None, height=22, halign='left'))
+        self.txt_kritik_stok = TextInput(hint_text='Örn: 5', multiline=False, input_filter='int', size_hint_y=None, height=48, font_size='15sp')
         form_layout.add_widget(self.txt_kritik_stok)
 
         main_layout.add_widget(form_layout)
 
-        btn_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None, height=60)
-        btn_kaydet = Button(text='Kaydet', background_color=(0.1, 0.7, 0.3, 1), background_normal='', bold=True, font_size='18sp')
-        btn_iptal = Button(text='Iptal', background_color=(0.8, 0.2, 0.2, 1), background_normal='', bold=True, font_size='18sp')
+        # Büyütülmüş Alt Kaydet / İptal Butonları
+        btn_box = BoxLayout(orientation='horizontal', spacing=12, size_hint_y=None, height=70)
+        btn_kaydet = Button(text='Kaydet', background_color=(0.1, 0.7, 0.3, 1), background_normal='', bold=True, font_size='20sp')
+        btn_iptal = Button(text='İptal', background_color=(0.8, 0.2, 0.2, 1), background_normal='', bold=True, font_size='20sp')
 
         btn_kaydet.bind(on_release=self.kaydet)
         btn_iptal.bind(on_release=lambda x: setattr(self.manager, 'current', 'ana_ekran'))
@@ -387,7 +387,7 @@ class ParcaEkleEkrani(Screen):
             self.manager.current = 'ana_ekran'
 
 
-# --- Canlı ve Dikey Formatlı Kamera Ekranı ---
+# --- Doğal Oranını Koruyan Dikey Kamera Ekranı ---
 class KameraEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -395,11 +395,12 @@ class KameraEkrani(Screen):
         
         self.layout.add_widget(Label(text="BARKOD TARA", font_size='18sp', size_hint_y=0.08, bold=True))
 
+        # keep_ratio=True ile kameranın basılması/yayılması engellendi
         self.camera = Camera(
             play=False, 
             resolution=(640, 480), 
             allow_stretch=True, 
-            keep_ratio=False, 
+            keep_ratio=True, 
             size_hint=(1, 0.80)
         )
         
@@ -418,7 +419,7 @@ class KameraEkrani(Screen):
             background_color=(0.5, 0.5, 0.5, 1), 
             background_normal='', 
             bold=True,
-            font_size='16sp'
+            font_size='18sp'
         )
         btn_geri.bind(on_release=self.geri_don)
         self.layout.add_widget(btn_geri)
