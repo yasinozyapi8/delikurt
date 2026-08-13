@@ -13,6 +13,7 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 from kivy.uix.camera import Camera
+from kivy.graphics import PushMatrix, PopMatrix, Rotate
 
 # Bilgisayarda Telefon Boyutunda Simüle Etmek İçin (360x640)
 from kivy.config import Config
@@ -310,54 +311,56 @@ class AnaEkran(Screen):
         popup.open()
 
 
-# --- Parça Ekleme Ekranı ---
+# --- Parça Ekleme Ekranı (Popup Mantığıyla Tam Esnek ve Geniş Yerleşim) ---
 class ParcaEkleEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
-        main_layout = BoxLayout(orientation='vertical', padding=18, spacing=10)
+        main_layout = BoxLayout(orientation='vertical', padding=15, spacing=8)
         
+        # Başlık
         main_layout.add_widget(Label(
             text="YENİ YEDEK PARÇA EKLE", 
             font_size='20sp', 
             bold=True, 
             color=(0.3, 0.7, 1, 1),
-            size_hint_y=None,
-            height=35
+            size_hint_y=0.08
         ))
 
-        form_layout = BoxLayout(orientation='vertical', spacing=6, size_hint_y=0.78)
+        # Form Alanı
+        form_layout = BoxLayout(orientation='vertical', spacing=4, size_hint_y=0.78)
 
-        form_layout.add_widget(Label(text="Parça Adı:", font_size='14sp', size_hint_y=None, height=22, halign='left'))
-        self.txt_ad = TextInput(hint_text='Örn: Rulman 6204', multiline=False, size_hint_y=None, height=48, font_size='15sp')
+        self.txt_ad = TextInput(hint_text='Örn: Rulman 6204', multiline=False)
+        self.txt_parca_kodu = TextInput(hint_text='Örn: PRC-001', multiline=False)
+        self.txt_barkod = TextInput(hint_text='Örn: 86900012345', multiline=False)
+        self.txt_raf = TextInput(hint_text='Örn: A-12', multiline=False)
+        self.txt_stok = TextInput(hint_text='Örn: 10', multiline=False, input_filter='int')
+        self.txt_kritik_stok = TextInput(hint_text='Örn: 5', multiline=False, input_filter='int')
+
+        form_layout.add_widget(Label(text="Parça Adı:"))
         form_layout.add_widget(self.txt_ad)
 
-        form_layout.add_widget(Label(text="Parça Kodu:", font_size='14sp', size_hint_y=None, height=22, halign='left'))
-        self.txt_parca_kodu = TextInput(hint_text='Örn: PRC-001', multiline=False, size_hint_y=None, height=48, font_size='15sp')
+        form_layout.add_widget(Label(text="Parça Kodu:"))
         form_layout.add_widget(self.txt_parca_kodu)
 
-        form_layout.add_widget(Label(text="Barkod:", font_size='14sp', size_hint_y=None, height=22, halign='left'))
-        self.txt_barkod = TextInput(hint_text='Örn: 86900012345', multiline=False, size_hint_y=None, height=48, font_size='15sp')
+        form_layout.add_widget(Label(text="Barkod:"))
         form_layout.add_widget(self.txt_barkod)
 
-        form_layout.add_widget(Label(text="Raf Numarası:", font_size='14sp', size_hint_y=None, height=22, halign='left'))
-        self.txt_raf = TextInput(hint_text='Örn: A-12', multiline=False, size_hint_y=None, height=48, font_size='15sp')
+        form_layout.add_widget(Label(text="Raf Numarası:"))
         form_layout.add_widget(self.txt_raf)
 
-        form_layout.add_widget(Label(text="Mevcut Stok Adedi:", font_size='14sp', size_hint_y=None, height=22, halign='left'))
-        self.txt_stok = TextInput(hint_text='Örn: 10', multiline=False, input_filter='int', size_hint_y=None, height=48, font_size='15sp')
+        form_layout.add_widget(Label(text="Mevcut Stok Adedi:"))
         form_layout.add_widget(self.txt_stok)
 
-        form_layout.add_widget(Label(text="Kritik Stok Uyarısı Sınırı:", font_size='14sp', size_hint_y=None, height=22, halign='left'))
-        self.txt_kritik_stok = TextInput(hint_text='Örn: 5', multiline=False, input_filter='int', size_hint_y=None, height=48, font_size='15sp')
+        form_layout.add_widget(Label(text="Kritik Stok Uyarısı Sınırı:"))
         form_layout.add_widget(self.txt_kritik_stok)
 
         main_layout.add_widget(form_layout)
 
-        # Büyütülmüş Alt Kaydet / İptal Butonları
-        btn_box = BoxLayout(orientation='horizontal', spacing=12, size_hint_y=None, height=70)
-        btn_kaydet = Button(text='Kaydet', background_color=(0.1, 0.7, 0.3, 1), background_normal='', bold=True, font_size='20sp')
-        btn_iptal = Button(text='İptal', background_color=(0.8, 0.2, 0.2, 1), background_normal='', bold=True, font_size='20sp')
+        # Alt Butonlar
+        btn_box = BoxLayout(orientation='horizontal', spacing=12, size_hint_y=0.14)
+        btn_kaydet = Button(text='Kaydet', background_color=(0.1, 0.7, 0.3, 1), background_normal='', bold=True, font_size='18sp')
+        btn_iptal = Button(text='İptal', background_color=(0.8, 0.2, 0.2, 1), background_normal='', bold=True, font_size='18sp')
 
         btn_kaydet.bind(on_release=self.kaydet)
         btn_iptal.bind(on_release=lambda x: setattr(self.manager, 'current', 'ana_ekran'))
@@ -391,7 +394,7 @@ class ParcaEkleEkrani(Screen):
             self.manager.current = 'ana_ekran'
 
 
-# --- Düzeltilmiş Güvenli Kamera Ekranı ---
+# --- Güvenli ve Dikey Formatlı Kamera Ekranı ---
 class KameraEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -399,7 +402,6 @@ class KameraEkrani(Screen):
         
         self.layout.add_widget(Label(text="BARKOD TARA", font_size='18sp', size_hint_y=0.08, bold=True))
 
-        # Kamera Bilgisayarda Çökmesin diye Try-Except Yapısı
         try:
             self.camera = Camera(
                 play=False, 
@@ -408,11 +410,19 @@ class KameraEkrani(Screen):
                 keep_ratio=True, 
                 size_hint=(1, 0.80)
             )
+            
+            with self.camera.canvas.before:
+                PushMatrix()
+                self.rot = Rotate(angle=-90, origin=self.camera.center)
+            with self.camera.canvas.after:
+                PopMatrix()
+
+            self.camera.bind(pos=self._rotation_merkezini_guncelle, size=self._rotation_merkezini_guncelle)
             self.layout.add_widget(self.camera)
         except Exception as e:
             print("Kamera yükleme uyarısı:", e)
             self.camera = None
-            self.layout.add_widget(Label(text="Kamera bilgisayarda/cihazda başlatılamadı.", size_hint=(1, 0.80)))
+            self.layout.add_widget(Label(text="Kamera başlatılamadı veya mevcut değil.", size_hint=(1, 0.80)))
 
         btn_geri = Button(
             text='Geri Dön', 
@@ -426,6 +436,10 @@ class KameraEkrani(Screen):
         self.layout.add_widget(btn_geri)
 
         self.add_widget(self.layout)
+
+    def _rotation_merkezini_guncelle(self, instance, value):
+        if hasattr(self, 'rot') and self.camera:
+            self.rot.origin = self.camera.center
 
     def on_enter(self):
         if self.camera:
