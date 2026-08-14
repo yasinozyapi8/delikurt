@@ -13,7 +13,6 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 from kivy.uix.camera import Camera
-from kivy.graphics import PushMatrix, PopMatrix, Rotate
 
 # Window Rengi
 Window.clearcolor = (0.12, 0.15, 0.18, 1)
@@ -41,9 +40,12 @@ def REST_verileri_cek():
                 kategori = fields.get("kategori", {}).get("stringValue", "Genel")
                 raf_konumu = fields.get("raf_konumu", {}).get("stringValue", "Belirtilmedi")
                 
-                # Miktar ve Kritik okuma
-                miktar = int(fields.get("miktar", {}).get("integerValue", fields.get("miktar", {}).get("doubleValue", 0)))
-                kritik = int(fields.get("kritik_seviye", {}).get("integerValue", fields.get("kritik_seviye", {}).get("doubleValue", 5)))
+                # Miktar ve Kritik Stok Seviyesi Tipi Okuma
+                m_raw = fields.get("miktar", {})
+                miktar = int(m_raw.get("integerValue", m_raw.get("doubleValue", 0)))
+                
+                k_raw = fields.get("kritik_seviye", {})
+                kritik = int(k_raw.get("integerValue", k_raw.get("doubleValue", 5)))
 
                 yeni_liste.append({
                     "parca_kodu": parca_kodu,
@@ -61,11 +63,7 @@ def REST_verileri_cek():
 
 def REST_stok_guncelle(doc_id, yeni_stok):
     url = f"{BASE_URL}/{doc_id}?updateMask.fieldPaths=miktar"
-    payload = {
-        "fields": {
-            "miktar": {"integerValue": yeni_stok}
-        }
-    }
+    payload = {"fields": {"miktar": {"integerValue": int(yeni_stok)}}}
     try:
         requests.patch(url, json=payload, timeout=5)
     except Exception as e:
@@ -139,10 +137,8 @@ class BasiliTutulanItem(Button):
 class AnaEkran(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        
         main_layout = BoxLayout(orientation='vertical', padding=12, spacing=10)
         
-        # Üst Başlık
         main_layout.add_widget(Label(
             text="STOK TAKİP SİSTEMİ (MOBİL)", 
             font_size='18sp', 
@@ -151,14 +147,8 @@ class AnaEkran(Screen):
             color=(0.3, 0.7, 1, 1)
         ))
 
-        # Arama ve Kamera
         arama_box = BoxLayout(orientation='horizontal', size_hint_y=0.09, spacing=6)
-        
-        self.txt_barkod_ara = TextInput(
-            hint_text='Barkod veya Parça Ara...', 
-            multiline=False,
-            background_color=(0.9, 0.9, 0.9, 1)
-        )
+        self.txt_barkod_ara = TextInput(hint_text='Barkod veya Parça Ara...', multiline=False, background_color=(0.9, 0.9, 0.9, 1))
         btn_ara = Button(text='Ara', size_hint_x=0.22, background_color=(0.2, 0.5, 0.9, 1), background_normal='', bold=True)
         btn_ara.bind(on_release=self.barkod_ara)
         
@@ -170,22 +160,14 @@ class AnaEkran(Screen):
         arama_box.add_widget(btn_kamera)
         main_layout.add_widget(arama_box)
 
-        # Liste Alanı
         self.scroll = ScrollView(size_hint=(1, 0.73))
         self.liste_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
         self.liste_layout.bind(minimum_height=self.liste_layout.setter('height'))
         self.scroll.add_widget(self.liste_layout)
         main_layout.add_widget(self.scroll)
 
-        # Alt Ekleme Butonu
         alt_box = BoxLayout(orientation='horizontal', size_hint_y=0.1)
-        btn_yeni_ekle = Button(
-            text='+ Yeni Yedek Parça Ekle', 
-            font_size='17sp',
-            bold=True,
-            background_color=(0.1, 0.7, 0.3, 1),
-            background_normal=''
-        )
+        btn_yeni_ekle = Button(text='+ Yeni Yedek Parça Ekle', font_size='17sp', bold=True, background_color=(0.1, 0.7, 0.3, 1), background_normal='')
         btn_yeni_ekle.bind(on_release=lambda x: setattr(self.manager, 'current', 'ekle_ekrani'))
         alt_box.add_widget(btn_yeni_ekle)
         main_layout.add_widget(alt_box)
@@ -193,11 +175,11 @@ class AnaEkran(Screen):
         self.add_widget(main_layout)
 
     def on_enter(self):
+        REST_verileri_cek()
         self.listeyi_guncelle(self.txt_barkod_ara.text)
 
     def listeyi_guncelle(self, filtre=""):
         self.liste_layout.clear_widgets()
-        
         for item in VERITABANI:
             kod = str(item.get('parca_kodu', '-'))
             barkod = str(item.get('barkod_no', kod))
@@ -205,13 +187,10 @@ class AnaEkran(Screen):
             
             if filtre:
                 f = filtre.lower()
-                if (f not in kod.lower() and 
-                    f not in barkod.lower() and 
-                    f not in ad.lower()):
+                if (f not in kod.lower() and f not in barkod.lower() and f not in ad.lower()):
                     continue
 
             card = BoxLayout(orientation='horizontal', size_hint_y=None, height=120, spacing=6)
-
             stok_adedi = int(item.get('miktar', 0))
             kritik_sınıri = int(item.get('kritik_seviye', 5))
             is_kritik = stok_adedi <= kritik_sınıri
@@ -219,28 +198,14 @@ class AnaEkran(Screen):
             bg_color = (0.55, 0.15, 0.15, 1) if is_kritik else (0.18, 0.22, 0.28, 1)
             uyari_metni = " [⚠️ KRİTİK!]" if is_kritik else ""
 
-            btn_text = (
-                f" Adı: {ad}{uyari_metni}\n"
-                f" Kod: {kod} | Barkod: {barkod}\n"
-                f" Raf: {item.get('raf_konumu', '-')} | Stok: {stok_adedi} Adet"
-            )
+            btn_text = (f" Adı: {ad}{uyari_metni}\n Kod: {kod} | Barkod: {barkod}\n Raf: {item.get('raf_konumu', '-')} | Stok: {stok_adedi} Adet")
             
-            btn_details = BasiliTutulanItem(
-                text=btn_text,
-                size_hint_x=0.74,
-                halign='left',
-                valign='middle',
-                background_color=bg_color,
-                background_normal='',
-                font_size='13sp'
-            )
+            btn_details = BasiliTutulanItem(text=btn_text, size_hint_x=0.74, halign='left', valign='middle', background_color=bg_color, background_normal='', font_size='13sp')
             btn_details.text_size = (btn_details.width, None)
             btn_details.bind(size=lambda s, w: setattr(s, 'text_size', (s.width - 15, None)))
-            
             btn_details.item_data = item
             btn_details.on_long_press_callback = self.duzenleme_popup_ac
             
-            # Hızlı Stok Arttırma / Eksiltme
             stok_box = BoxLayout(orientation='vertical', size_hint_x=0.26, spacing=4)
             btn_plus = Button(text='+', font_size='22sp', bold=True, background_color=(0.1, 0.7, 0.3, 1), background_normal='')
             btn_minus = Button(text='-', font_size='22sp', bold=True, background_color=(0.8, 0.2, 0.2, 1), background_normal='')
@@ -281,7 +246,6 @@ class AnaEkran(Screen):
 
     def duzenleme_popup_ac(self, item_button):
         data = item_button.item_data
-
         content = BoxLayout(orientation='vertical', spacing=6, padding=10)
         
         txt_ad = TextInput(text=str(data.get('parca_adi', '')), multiline=False)
@@ -301,21 +265,14 @@ class AnaEkran(Screen):
         content.add_widget(txt_raf)
         content.add_widget(Label(text="Kritik Stok Seviyesi:"))
         content.add_widget(txt_kritik_stok)
-        
         content.add_widget(Label(text="Mevcut Stok Adedi:"))
+        
         stok_box = BoxLayout(orientation='horizontal', spacing=5)
         btn_e = Button(text='-', size_hint_x=0.2, background_color=(0.7, 0.2, 0.2, 1), background_normal='')
         btn_a = Button(text='+', size_hint_x=0.2, background_color=(0.2, 0.6, 0.2, 1), background_normal='')
         
-        def eksilt(x):
-            val = int(txt_stok.text or 0)
-            if val > 0: txt_stok.text = str(val - 1)
-        def arttir(x):
-            val = int(txt_stok.text or 0)
-            txt_stok.text = str(val + 1)
-            
-        btn_e.bind(on_release=eksilt)
-        btn_a.bind(on_release=arttir)
+        btn_e.bind(on_release=lambda x: setattr(txt_stok, 'text', str(max(0, int(txt_stok.text or 0) - 1))))
+        btn_a.bind(on_release=lambda x: setattr(txt_stok, 'text', str(int(txt_stok.text or 0) + 1)))
         
         stok_box.add_widget(btn_e)
         stok_box.add_widget(txt_stok)
@@ -325,7 +282,6 @@ class AnaEkran(Screen):
         buton_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=0.4)
         btn_kaydet = Button(text='Güncelle', background_color=(0.1, 0.5, 0.9, 1), background_normal='')
         btn_sil = Button(text='Sil', background_color=(0.8, 0.2, 0.2, 1), background_normal='')
-        
         popup = Popup(title='Parça Düzenle / Sil', content=content, size_hint=(0.92, 0.95))
 
         def kaydet_action(x):
@@ -335,15 +291,16 @@ class AnaEkran(Screen):
             data['raf_konumu'] = txt_raf.text
             data['miktar'] = int(txt_stok.text or 0)
             data['kritik_seviye'] = int(txt_kritik_stok.text or 5)
-
             REST_parca_ekle_veya_guncelle(doc_id, data)
             popup.dismiss()
+            REST_verileri_cek()
             self.listeyi_guncelle()
 
         def sil_action(x):
             doc_id = str(data.get('parca_kodu'))
             REST_parca_sil(doc_id)
             popup.dismiss()
+            REST_verileri_cek()
             self.listeyi_guncelle()
 
         btn_kaydet.bind(on_release=kaydet_action)
@@ -352,7 +309,6 @@ class AnaEkran(Screen):
         buton_box.add_widget(btn_kaydet)
         buton_box.add_widget(btn_sil)
         content.add_widget(buton_box)
-
         popup.open()
 
 
@@ -360,16 +316,9 @@ class AnaEkran(Screen):
 class ParcaEkleEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        
         main_layout = BoxLayout(orientation='vertical', padding=15, spacing=8)
         
-        main_layout.add_widget(Label(
-            text="YENİ YEDEK PARÇA EKLE", 
-            font_size='20sp', 
-            bold=True, 
-            color=(0.3, 0.7, 1, 1),
-            size_hint_y=0.08
-        ))
+        main_layout.add_widget(Label(text="YENİ YEDEK PARÇA EKLE", font_size='20sp', bold=True, color=(0.3, 0.7, 1, 1), size_hint_y=0.08))
 
         form_layout = BoxLayout(orientation='vertical', spacing=4, size_hint_y=0.78)
 
@@ -382,19 +331,14 @@ class ParcaEkleEkrani(Screen):
 
         form_layout.add_widget(Label(text="Parça Adı:"))
         form_layout.add_widget(self.txt_ad)
-
         form_layout.add_widget(Label(text="Parça Kodu:"))
         form_layout.add_widget(self.txt_parca_kodu)
-
         form_layout.add_widget(Label(text="Barkod:"))
         form_layout.add_widget(self.txt_barkod)
-
         form_layout.add_widget(Label(text="Raf Numarası:"))
         form_layout.add_widget(self.txt_raf)
-
         form_layout.add_widget(Label(text="Mevcut Stok Adedi:"))
         form_layout.add_widget(self.txt_stok)
-
         form_layout.add_widget(Label(text="Kritik Stok Uyarısı Sınırı:"))
         form_layout.add_widget(self.txt_kritik_stok)
 
@@ -434,6 +378,7 @@ class ParcaEkleEkrani(Screen):
             self.txt_stok.text = ""
             self.txt_kritik_stok.text = ""
             
+            REST_verileri_cek()
             self.manager.current = 'ana_ekran'
 
 
@@ -442,51 +387,28 @@ class KameraEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
-        
-        self.layout.add_widget(Label(text="BARKOD TARA", font_size='18sp', size_hint_y=0.08, bold=True))
+        self.layout.add_widget(Label(text="BARKOD TARAMA EKRANI", font_size='18sp', size_hint_y=0.08, bold=True))
 
-        try:
-            self.camera = Camera(
-                play=False, 
-                resolution=(640, 480), 
-                allow_stretch=True, 
-                keep_ratio=True, 
-                size_hint=(1, 0.80)
-            )
-            
-            with self.camera.canvas.before:
-                PushMatrix()
-                self.rot = Rotate(angle=-90, origin=self.camera.center)
-            with self.camera.canvas.after:
-                PopMatrix()
+        self.camera = None
+        self.cam_container = BoxLayout(size_hint=(1, 0.80))
+        self.layout.add_widget(self.cam_container)
 
-            self.camera.bind(pos=self._rotation_merkezini_guncelle, size=self._rotation_merkezini_guncelle)
-            self.layout.add_widget(self.camera)
-        except Exception as e:
-            print("Kamera yükleme uyarısı:", e)
-            self.camera = None
-            self.layout.add_widget(Label(text="Kamera başlatılamadı veya mevcut değil.", size_hint=(1, 0.80)))
-
-        btn_geri = Button(
-            text='Geri Dön', 
-            size_hint_y=0.12, 
-            background_color=(0.5, 0.5, 0.5, 1), 
-            background_normal='', 
-            bold=True,
-            font_size='18sp'
-        )
+        btn_geri = Button(text='Geri Dön', size_hint_y=0.12, background_color=(0.5, 0.5, 0.5, 1), background_normal='', bold=True, font_size='18sp')
         btn_geri.bind(on_release=self.geri_don)
         self.layout.add_widget(btn_geri)
 
         self.add_widget(self.layout)
 
-    def _rotation_merkezini_guncelle(self, instance, value):
-        if hasattr(self, 'rot') and self.camera:
-            self.rot.origin = self.camera.center
-
     def on_enter(self):
-        if self.camera:
-            self.camera.play = True
+        try:
+            if not self.camera:
+                self.camera = Camera(play=True, resolution=(640, 480))
+                self.cam_container.add_widget(self.camera)
+            else:
+                self.camera.play = True
+        except Exception as e:
+            self.cam_container.clear_widgets()
+            self.cam_container.add_widget(Label(text=f"Kamera Başlatılamadı:\n{e}"))
 
     def on_leave(self):
         if self.camera:
@@ -500,7 +422,6 @@ class KameraEkrani(Screen):
 class StokTakipApp(App):
     def build(self):
         android_izinlerini_iste()
-
         sm = ScreenManager()
         sm.add_widget(AnaEkran(name='ana_ekran'))
         sm.add_widget(ParcaEkleEkrani(name='ekle_ekrani'))
@@ -508,13 +429,14 @@ class StokTakipApp(App):
         return sm
 
     def on_start(self):
-        # Periyodik Veri Yenileme (2 saniyede bir buluttan canlı veri çeker)
+        REST_verileri_cek()
+        
         def verileri_periyodik_cek(dt):
             REST_verileri_cek()
             ana_ekran = self.root.get_screen('ana_ekran')
             ana_ekran.listeyi_guncelle(ana_ekran.txt_barkod_ara.text)
 
-        Clock.schedule_interval(verileri_periyodik_cek, 2)
+        Clock.schedule_interval(verileri_periyodik_cek, 3)
 
 
 if __name__ == '__main__':
