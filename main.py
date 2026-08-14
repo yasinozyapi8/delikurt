@@ -1,4 +1,5 @@
 import os
+import requests
 from kivy.app import App
 from kivy.core.window import Window
 from kivy.utils import platform
@@ -14,68 +15,99 @@ from kivy.uix.popup import Popup
 from kivy.uix.camera import Camera
 from kivy.graphics import PushMatrix, PopMatrix, Rotate
 
-# Firebase Kütüphaneleri
-import firebase_admin
-from firebase_admin import credentials, firestore
-
-# --- Firebase Bağlantısını Başlat ---
-FIREBASE_AKTIF = False
-db = None
-
-try:
-    # Android ve PC için dosyanın tam yolunu garantiye alıyoruz
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    key_path = os.path.join(base_dir, "firebase_key.json")
-    
-    if os.path.exists(key_path):
-        cred = credentials.Certificate(key_path)
-        firebase_admin.initialize_app(cred)
-        db = firestore.client()
-        FIREBASE_AKTIF = True
-        print("✅ Firebase bağlantısı başarılı!")
-    else:
-        print(f"⚠️ {key_path} konumunda firebase_key.json bulunamadı.")
-except Exception as e:
-    print("❌ Firebase başlatma hatası:", e)
-# --- Arka Plan Rengini Ayarla ---
+# Window Rengi
 Window.clearcolor = (0.12, 0.15, 0.18, 1)
 
-# Global Veritabanı Değişkeni
+# 🔥 FIREBASE REST API YAPILANDIRMASI
+# Proje ID'niz (Firestore panelinizin URL'inde yazar, örn: stoktakip-xxxx)
+PROJECT_ID = "stok-takip-26210"  # <--- BURAYA KENDİ FIREBASE PROJECT ID'NİZİ YAZIN
+BASE_URL = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/stoklar"
+
 VERITABANI = []
 
+# --- FIREBASE REST İŞLEMLERİ ---
+def REST_verileri_cek():
+    global VERITABANI
+    try:
+        res = requests.get(BASE_URL, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            yeni_liste = []
+            documents = data.get("documents", [])
+            for doc in documents:
+                fields = doc.get("fields", {})
+                parca_kodu = fields.get("parca_kodu", {}).get("stringValue", "-")
+                barkod_no = fields.get("barkod_no", {}).get("stringValue", parca_kodu)
+                parca_adi = fields.get("parca_adi", {}).get("stringValue", "-")
+                kategori = fields.get("kategori", {}).get("stringValue", "Genel")
+                raf_konumu = fields.get("raf_konumu", {}).get("stringValue", "Belirtilmedi")
+                
+                # Miktar ve Kritik okuma
+                miktar = int(fields.get("miktar", {}).get("integerValue", fields.get("miktar", {}).get("doubleValue", 0)))
+                kritik = int(fields.get("kritik_seviye", {}).get("integerValue", fields.get("kritik_seviye", {}).get("doubleValue", 5)))
 
-# --- Firebase Veri İşlem Fonksiyonları ---
-def bulut_stok_guncelle(doc_id, yeni_stok):
-    if FIREBASE_AKTIF and db:
-        try:
-            db.collection("stoklar").document(doc_id).update({"miktar": yeni_stok})
-        except Exception as e:
-            print("Bulut stok güncelleme hatası:", e)
+                yeni_liste.append({
+                    "parca_kodu": parca_kodu,
+                    "barkod_no": barkod_no,
+                    "parca_adi": parca_adi,
+                    "kategori": kategori,
+                    "raf_konumu": raf_konumu,
+                    "miktar": miktar,
+                    "kritik_seviye": kritik
+                })
+            VERITABANI = yeni_liste
+    except Exception as e:
+        print("REST Veri Çekme Hatası:", e)
 
 
-def bulut_parca_ekle_veya_guncelle(doc_id, parca_data):
-    if FIREBASE_AKTIF and db:
-        try:
-            db.collection("stoklar").document(doc_id).set(parca_data)
-        except Exception as e:
-            print("Buluta kaydetme hatası:", e)
+def REST_stok_guncelle(doc_id, yeni_stok):
+    url = f"{BASE_URL}/{doc_id}?updateMask.fieldPaths=miktar"
+    payload = {
+        "fields": {
+            "miktar": {"integerValue": yeni_stok}
+        }
+    }
+    try:
+        requests.patch(url, json=payload, timeout=5)
+    except Exception as e:
+        print("REST Stok Güncelleme Hatası:", e)
 
 
-def bulut_parca_sil(doc_id):
-    if FIREBASE_AKTIF and db:
-        try:
-            db.collection("stoklar").document(doc_id).delete()
-        except Exception as e:
-            print("Buluttan silme hatası:", e)
+def REST_parca_ekle_veya_guncelle(doc_id, p_data):
+    url = f"{BASE_URL}/{doc_id}"
+    payload = {
+        "fields": {
+            "parca_kodu": {"stringValue": str(p_data.get("parca_kodu", "-"))},
+            "barkod_no": {"stringValue": str(p_data.get("barkod_no", "-"))},
+            "parca_adi": {"stringValue": str(p_data.get("parca_adi", "-"))},
+            "kategori": {"stringValue": str(p_data.get("kategori", "Genel"))},
+            "raf_konumu": {"stringValue": str(p_data.get("raf_konumu", "Belirtilmedi"))},
+            "miktar": {"integerValue": int(p_data.get("miktar", 0))},
+            "kritik_seviye": {"integerValue": int(p_data.get("kritik_seviye", 5))}
+        }
+    }
+    try:
+        requests.patch(url, json=payload, timeout=5)
+    except Exception as e:
+        print("REST Parça Kayıt Hatası:", e)
 
 
-# --- Android İzin Kontrolü ---
+def REST_parca_sil(doc_id):
+    url = f"{BASE_URL}/{doc_id}"
+    try:
+        requests.delete(url, timeout=5)
+    except Exception as e:
+        print("REST Silme Hatası:", e)
+
+
+# --- ANDROID İZİNLERİ ---
 def android_izinlerini_iste():
     if platform == 'android':
         try:
             from android.permissions import request_permissions, Permission
             request_permissions([
                 Permission.CAMERA,
+                Permission.INTERNET,
                 Permission.READ_EXTERNAL_STORAGE,
                 Permission.WRITE_EXTERNAL_STORAGE
             ])
@@ -83,7 +115,7 @@ def android_izinlerini_iste():
             print("İzin alma hatası:", e)
 
 
-# --- Basılı Tutulan (Long Press) Buton ---
+# --- UZUN BASMA BUTONU ---
 class BasiliTutulanItem(Button):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -104,7 +136,7 @@ class BasiliTutulanItem(Button):
             self.on_long_press_callback(self)
 
 
-# --- Ana Liste Ekranı ---
+# --- ANA LİSTE EKRANI ---
 class AnaEkran(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -218,7 +250,8 @@ class AnaEkran(Screen):
                 def arttir(x):
                     d['miktar'] = int(d.get('miktar', 0)) + 1
                     doc_id = str(d.get('parca_kodu'))
-                    bulut_stok_guncelle(doc_id, d['miktar'])
+                    REST_stok_guncelle(doc_id, d['miktar'])
+                    self.listeyi_guncelle(self.txt_barkod_ara.text)
                 return arttir
 
             def make_eksilt(d):
@@ -227,7 +260,8 @@ class AnaEkran(Screen):
                     if curr > 0:
                         d['miktar'] = curr - 1
                         doc_id = str(d.get('parca_kodu'))
-                        bulut_stok_guncelle(doc_id, d['miktar'])
+                        REST_stok_guncelle(doc_id, d['miktar'])
+                        self.listeyi_guncelle(self.txt_barkod_ara.text)
                 return eksilt
 
             btn_plus.bind(on_release=make_arttir(item))
@@ -246,7 +280,6 @@ class AnaEkran(Screen):
     def kamera_ac(self, instance):
         self.manager.current = 'kamera_ekrani'
 
-    # Detaylı Düzenleme / Silme Menüsü
     def duzenleme_popup_ac(self, item_button):
         data = item_button.item_data
 
@@ -304,13 +337,15 @@ class AnaEkran(Screen):
             data['miktar'] = int(txt_stok.text or 0)
             data['kritik_seviye'] = int(txt_kritik_stok.text or 5)
 
-            bulut_parca_ekle_veya_guncelle(doc_id, data)
+            REST_parca_ekle_veya_guncelle(doc_id, data)
             popup.dismiss()
+            self.listeyi_guncelle()
 
         def sil_action(x):
             doc_id = str(data.get('parca_kodu'))
-            bulut_parca_sil(doc_id)
+            REST_parca_sil(doc_id)
             popup.dismiss()
+            self.listeyi_guncelle()
 
         btn_kaydet.bind(on_release=kaydet_action)
         btn_sil.bind(on_release=sil_action)
@@ -322,7 +357,7 @@ class AnaEkran(Screen):
         popup.open()
 
 
-# --- Parça Ekleme Ekranı ---
+# --- PARÇA EKLEME EKRANI ---
 class ParcaEkleEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -391,7 +426,7 @@ class ParcaEkleEkrani(Screen):
                 "miktar": int(self.txt_stok.text or 0),
                 "kritik_seviye": int(self.txt_kritik_stok.text or 5)
             }
-            bulut_parca_ekle_veya_guncelle(kod, yeni_parca)
+            REST_parca_ekle_veya_guncelle(kod, yeni_parca)
             
             self.txt_ad.text = ""
             self.txt_parca_kodu.text = ""
@@ -403,7 +438,7 @@ class ParcaEkleEkrani(Screen):
             self.manager.current = 'ana_ekran'
 
 
-# --- Kamera Ekranı ---
+# --- KAMERA EKRANI ---
 class KameraEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -462,7 +497,7 @@ class KameraEkrani(Screen):
         self.manager.current = 'ana_ekran'
 
 
-# --- Uygulama Sınıfı ---
+# --- UYGULAMA SINIFI ---
 class StokTakipApp(App):
     def build(self):
         android_izinlerini_iste()
@@ -474,25 +509,13 @@ class StokTakipApp(App):
         return sm
 
     def on_start(self):
-        if FIREBASE_AKTIF and db:
-            # Firestore Canlı Dinleyici (Real-time Listener)
-            def canli_verileri_dinle(col_snapshot, changes, read_time):
-                global VERITABANI
-                yeni_liste = []
-                for doc in col_snapshot:
-                    yeni_liste.append(doc.to_dict())
-                
-                VERITABANI = yeni_liste
+        # Periyodik Veri Yenileme (2 saniyede bir buluttan veri çeker)
+        def verileri_periyodik_cek(dt):
+            REST_verileri_cek()
+            ana_ekran = self.root.get_screen('ana_ekran')
+            ana_ekran.listeyi_guncelle(ana_ekran.txt_barkod_ara.text)
 
-                # Kivy Ana Thread'ine Bildir
-                def arayuzu_yenile(dt):
-                    ana_ekran = self.root.get_screen('ana_ekran')
-                    ana_ekran.listeyi_guncelle(ana_ekran.txt_barkod_ara.text)
-
-                Clock.schedule_once(arayuzu_yenile, 0)
-
-            # Dinleyiciyi Başlat
-            db.collection("stoklar").on_snapshot(canli_verileri_dinle)
+        Clock.schedule_interval(verileri_periyodik_cek, 2)
 
 
 if __name__ == '__main__':
