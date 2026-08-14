@@ -1,5 +1,4 @@
 import os
-import json
 from kivy.app import App
 from kivy.core.window import Window
 from kivy.utils import platform
@@ -15,54 +14,60 @@ from kivy.uix.popup import Popup
 from kivy.uix.camera import Camera
 from kivy.graphics import PushMatrix, PopMatrix, Rotate
 
-# Bilgisayarda Telefon Boyutunda Simüle Etmek İçin (360x640)
-from kivy.config import Config
-Config.set('graphics', 'width', '360')
-Config.set('graphics', 'height', '640')
+# Firebase Kütüphaneleri
+import firebase_admin
+from firebase_admin import credentials, firestore
 
-# --- Arka Plan Rengini Ayarla (Modern Koyu Antrasit) ---
+# --- Firebase Bağlantısını Başlat ---
+FIREBASE_AKTIF = False
+db = None
+
+try:
+    key_path = "firebase_key.json"
+    if os.path.exists(key_path):
+        cred = credentials.Certificate(key_path)
+        firebase_admin.initialize_app(cred)
+        db = firestore.client()
+        FIREBASE_AKTIF = True
+        print("✅ Firebase bağlantısı başarılı!")
+    else:
+        print("⚠️ firebase_key.json bulunamadı.")
+except Exception as e:
+    print("❌ Firebase başlatma hatası:", e)
+
+# --- Arka Plan Rengini Ayarla ---
 Window.clearcolor = (0.12, 0.15, 0.18, 1)
 
 # Global Veritabanı Değişkeni
 VERITABANI = []
 
 
-# --- Kalıcı Veri Yükleme ve Kaydetme Fonksiyonları ---
-def dosya_yolunu_al():
-    app = App.get_running_app()
-    if app and hasattr(app, 'user_data_dir'):
-        return os.path.join(app.user_data_dir, 'stok_verileri.json')
-    return 'stok_verileri.json'
-
-
-def verileri_yukle():
-    global VERITABANI
-    dosya = dosya_yolunu_al()
-    if os.path.exists(dosya):
+# --- Firebase Veri İşlem Fonksiyonları ---
+def bulut_stok_guncelle(doc_id, yeni_stok):
+    if FIREBASE_AKTIF and db:
         try:
-            with open(dosya, 'r', encoding='utf-8') as f:
-                VERITABANI = json.load(f)
-                return
+            db.collection("stoklar").document(doc_id).update({"miktar": yeni_stok})
         except Exception as e:
-            print("Veri okuma hatası:", e)
-
-    # Varsayılan Örnek Veriler
-    VERITABANI = [
-        {"parca_kodu": "BV-1430", "barkod": "869000111", "ad": "Blok Vidası 1,4x3,0mm", "raf": "A-12", "stok": 3, "kritik_stok": 5},
-        {"parca_kodu": "PRC-002", "barkod": "869000222", "ad": "V-Kayışı A-42", "raf": "B-03", "stok": 8, "kritik_stok": 3},
-    ]
+            print("Bulut stok güncelleme hatası:", e)
 
 
-def verileri_kaydet():
-    dosya = dosya_yolunu_al()
-    try:
-        with open(dosya, 'w', encoding='utf-8') as f:
-            json.dump(VERITABANI, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        print("Veri kaydetme hatası:", e)
+def bulut_parca_ekle_veya_guncelle(doc_id, parca_data):
+    if FIREBASE_AKTIF and db:
+        try:
+            db.collection("stoklar").document(doc_id).set(parca_data)
+        except Exception as e:
+            print("Buluta kaydetme hatası:", e)
 
 
-# --- Android İzin Kontrolü (Sadece Android'de Çalışır) ---
+def bulut_parca_sil(doc_id):
+    if FIREBASE_AKTIF and db:
+        try:
+            db.collection("stoklar").document(doc_id).delete()
+        except Exception as e:
+            print("Buluttan silme hatası:", e)
+
+
+# --- Android İzin Kontrolü ---
 def android_izinlerini_iste():
     if platform == 'android':
         try:
@@ -106,8 +111,8 @@ class AnaEkran(Screen):
         
         # Üst Başlık
         main_layout.add_widget(Label(
-            text="STOK TAKİP SİSTEMİ", 
-            font_size='20sp', 
+            text="STOK TAKİP SİSTEMİ (MOBİL)", 
+            font_size='18sp', 
             size_hint_y=0.08, 
             bold=True,
             color=(0.3, 0.7, 1, 1)
@@ -161,26 +166,30 @@ class AnaEkran(Screen):
         self.liste_layout.clear_widgets()
         
         for item in VERITABANI:
+            kod = str(item.get('parca_kodu', '-'))
+            barkod = str(item.get('barkod_no', kod))
+            ad = str(item.get('parca_adi', '-'))
+            
             if filtre:
                 f = filtre.lower()
-                if (f not in item['parca_kodu'].lower() and 
-                    f not in item['barkod'].lower() and 
-                    f not in item['ad'].lower()):
+                if (f not in kod.lower() and 
+                    f not in barkod.lower() and 
+                    f not in ad.lower()):
                     continue
 
             card = BoxLayout(orientation='horizontal', size_hint_y=None, height=120, spacing=6)
 
-            stok_adedi = item.get('stok', 0)
-            kritik_sınıri = item.get('kritik_stok', 0)
+            stok_adedi = int(item.get('miktar', 0))
+            kritik_sınıri = int(item.get('kritik_seviye', 5))
             is_kritik = stok_adedi <= kritik_sınıri
 
             bg_color = (0.55, 0.15, 0.15, 1) if is_kritik else (0.18, 0.22, 0.28, 1)
-            uyari_metni = " [⚠️ KRİTİK STOK!]" if is_kritik else ""
+            uyari_metni = " [⚠️ KRİTİK!]" if is_kritik else ""
 
             btn_text = (
-                f" Parça Adı: {item['ad']}{uyari_metni}\n"
-                f" Kod: {item['parca_kodu']} | Barkod: {item['barkod']}\n"
-                f" Raf: {item['raf']} | Stok: {stok_adedi} Adet (Kritik: {kritik_sınıri})"
+                f" Adı: {ad}{uyari_metni}\n"
+                f" Kod: {kod} | Barkod: {barkod}\n"
+                f" Raf: {item.get('raf_konumu', '-')} | Stok: {stok_adedi} Adet"
             )
             
             btn_details = BasiliTutulanItem(
@@ -205,17 +214,18 @@ class AnaEkran(Screen):
 
             def make_arttir(d):
                 def arttir(x):
-                    d['stok'] += 1
-                    verileri_kaydet()
-                    self.listeyi_guncelle(self.txt_barkod_ara.text)
+                    d['miktar'] = int(d.get('miktar', 0)) + 1
+                    doc_id = str(d.get('parca_kodu'))
+                    bulut_stok_guncelle(doc_id, d['miktar'])
                 return arttir
 
             def make_eksilt(d):
                 def eksilt(x):
-                    if d['stok'] > 0:
-                        d['stok'] -= 1
-                        verileri_kaydet()
-                        self.listeyi_guncelle(self.txt_barkod_ara.text)
+                    curr = int(d.get('miktar', 0))
+                    if curr > 0:
+                        d['miktar'] = curr - 1
+                        doc_id = str(d.get('parca_kodu'))
+                        bulut_stok_guncelle(doc_id, d['miktar'])
                 return eksilt
 
             btn_plus.bind(on_release=make_arttir(item))
@@ -240,12 +250,12 @@ class AnaEkran(Screen):
 
         content = BoxLayout(orientation='vertical', spacing=6, padding=10)
         
-        txt_ad = TextInput(text=data['ad'], multiline=False)
-        txt_parca_kodu = TextInput(text=data['parca_kodu'], multiline=False)
-        txt_barkod = TextInput(text=data['barkod'], multiline=False)
-        txt_raf = TextInput(text=data['raf'], multiline=False)
-        txt_stok = TextInput(text=str(data.get('stok', 0)), multiline=False, input_filter='int')
-        txt_kritik_stok = TextInput(text=str(data.get('kritik_stok', 5)), multiline=False, input_filter='int')
+        txt_ad = TextInput(text=str(data.get('parca_adi', '')), multiline=False)
+        txt_parca_kodu = TextInput(text=str(data.get('parca_kodu', '')), multiline=False, readonly=True)
+        txt_barkod = TextInput(text=str(data.get('barkod_no', '')), multiline=False)
+        txt_raf = TextInput(text=str(data.get('raf_konumu', '')), multiline=False)
+        txt_stok = TextInput(text=str(data.get('miktar', 0)), multiline=False, input_filter='int')
+        txt_kritik_stok = TextInput(text=str(data.get('kritik_seviye', 5)), multiline=False, input_filter='int')
 
         content.add_widget(Label(text="Parça Adı:"))
         content.add_widget(txt_ad)
@@ -279,26 +289,25 @@ class AnaEkran(Screen):
         content.add_widget(stok_box)
 
         buton_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=0.4)
-        btn_kaydet = Button(text='Guncelle', background_color=(0.1, 0.5, 0.9, 1), background_normal='')
+        btn_kaydet = Button(text='Güncelle', background_color=(0.1, 0.5, 0.9, 1), background_normal='')
         btn_sil = Button(text='Sil', background_color=(0.8, 0.2, 0.2, 1), background_normal='')
         
         popup = Popup(title='Parça Düzenle / Sil', content=content, size_hint=(0.92, 0.95))
 
         def kaydet_action(x):
-            data['ad'] = txt_ad.text
-            data['parca_kodu'] = txt_parca_kodu.text
-            data['barkod'] = txt_barkod.text
-            data['raf'] = txt_raf.text
-            data['stok'] = int(txt_stok.text or 0)
-            data['kritik_stok'] = int(txt_kritik_stok.text or 0)
-            verileri_kaydet()
-            self.listeyi_guncelle(self.txt_barkod_ara.text)
+            doc_id = str(data.get('parca_kodu'))
+            data['parca_adi'] = txt_ad.text
+            data['barkod_no'] = txt_barkod.text
+            data['raf_konumu'] = txt_raf.text
+            data['miktar'] = int(txt_stok.text or 0)
+            data['kritik_seviye'] = int(txt_kritik_stok.text or 5)
+
+            bulut_parca_ekle_veya_guncelle(doc_id, data)
             popup.dismiss()
 
         def sil_action(x):
-            VERITABANI.remove(data)
-            verileri_kaydet()
-            self.listeyi_guncelle(self.txt_barkod_ara.text)
+            doc_id = str(data.get('parca_kodu'))
+            bulut_parca_sil(doc_id)
             popup.dismiss()
 
         btn_kaydet.bind(on_release=kaydet_action)
@@ -311,14 +320,13 @@ class AnaEkran(Screen):
         popup.open()
 
 
-# --- Parça Ekleme Ekranı (Popup Mantığıyla Tam Esnek ve Geniş Yerleşim) ---
+# --- Parça Ekleme Ekranı ---
 class ParcaEkleEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
         main_layout = BoxLayout(orientation='vertical', padding=15, spacing=8)
         
-        # Başlık
         main_layout.add_widget(Label(
             text="YENİ YEDEK PARÇA EKLE", 
             font_size='20sp', 
@@ -327,7 +335,6 @@ class ParcaEkleEkrani(Screen):
             size_hint_y=0.08
         ))
 
-        # Form Alanı
         form_layout = BoxLayout(orientation='vertical', spacing=4, size_hint_y=0.78)
 
         self.txt_ad = TextInput(hint_text='Örn: Rulman 6204', multiline=False)
@@ -357,7 +364,6 @@ class ParcaEkleEkrani(Screen):
 
         main_layout.add_widget(form_layout)
 
-        # Alt Butonlar
         btn_box = BoxLayout(orientation='horizontal', spacing=12, size_hint_y=0.14)
         btn_kaydet = Button(text='Kaydet', background_color=(0.1, 0.7, 0.3, 1), background_normal='', bold=True, font_size='18sp')
         btn_iptal = Button(text='İptal', background_color=(0.8, 0.2, 0.2, 1), background_normal='', bold=True, font_size='18sp')
@@ -372,17 +378,18 @@ class ParcaEkleEkrani(Screen):
         self.add_widget(main_layout)
 
     def kaydet(self, instance):
-        if self.txt_ad.text and (self.txt_parca_kodu.text or self.txt_barkod.text):
+        if self.txt_ad.text and self.txt_parca_kodu.text:
+            kod = self.txt_parca_kodu.text.strip()
             yeni_parca = {
-                "ad": self.txt_ad.text,
-                "parca_kodu": self.txt_parca_kodu.text or "-",
-                "barkod": self.txt_barkod.text or "-",
-                "raf": self.txt_raf.text or "-",
-                "stok": int(self.txt_stok.text or 0),
-                "kritik_stok": int(self.txt_kritik_stok.text or 5)
+                "parca_adi": self.txt_ad.text.strip(),
+                "parca_kodu": kod,
+                "barkod_no": self.txt_barkod.text.strip() or kod,
+                "kategori": "Genel",
+                "raf_konumu": self.txt_raf.text.strip() or "Belirtilmedi",
+                "miktar": int(self.txt_stok.text or 0),
+                "kritik_seviye": int(self.txt_kritik_stok.text or 5)
             }
-            VERITABANI.append(yeni_parca)
-            verileri_kaydet()
+            bulut_parca_ekle_veya_guncelle(kod, yeni_parca)
             
             self.txt_ad.text = ""
             self.txt_parca_kodu.text = ""
@@ -394,7 +401,7 @@ class ParcaEkleEkrani(Screen):
             self.manager.current = 'ana_ekran'
 
 
-# --- Güvenli ve Dikey Formatlı Kamera Ekranı ---
+# --- Kamera Ekranı ---
 class KameraEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -465,8 +472,25 @@ class StokTakipApp(App):
         return sm
 
     def on_start(self):
-        verileri_yukle()
-        self.root.get_screen('ana_ekran').listeyi_guncelle()
+        if FIREBASE_AKTIF and db:
+            # Firestore Canlı Dinleyici (Real-time Listener)
+            def canli_verileri_dinle(col_snapshot, changes, read_time):
+                global VERITABANI
+                yeni_liste = []
+                for doc in col_snapshot:
+                    yeni_liste.append(doc.to_dict())
+                
+                VERITABANI = yeni_liste
+
+                # Kivy Ana Thread'ine Bildir
+                def arayuzu_yenile(dt):
+                    ana_ekran = self.root.get_screen('ana_ekran')
+                    ana_ekran.listeyi_guncelle(ana_ekran.txt_barkod_ara.text)
+
+                Clock.schedule_once(arayuzu_yenile, 0)
+
+            # Dinleyiciyi Başlat
+            db.collection("stoklar").on_snapshot(canli_verileri_dinle)
 
 
 if __name__ == '__main__':
