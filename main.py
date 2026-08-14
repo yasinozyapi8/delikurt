@@ -18,7 +18,7 @@ from kivy.uix.camera import Camera
 Window.clearcolor = (0.12, 0.15, 0.18, 1)
 
 # 🔥 FIREBASE REST API YAPILANDIRMASI
-PROJECT_ID = "stok-takip-26210"
+PROJECT_ID = "stok-takip-f061b"  # <--- Gerçek Proje Kimliğin
 BASE_URL = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/stoklar"
 
 VERITABANI = []
