@@ -19,7 +19,6 @@ from kivy.graphics import PushMatrix, PopMatrix, Rotate
 
 # --- ANDROID KLAVYE VE PENCERE AYARLARI ---
 Window.clearcolor = (0.12, 0.15, 0.18, 1)
-# Android klavyesinin ekrana basıldığında sorunsuz açılmasını sağlar
 Window.softinput_mode = 'below_target'
 
 # 🔥 FIREBASE REST API YAPILANDIRMASI
@@ -175,6 +174,7 @@ class AnaEkran(Screen):
             hint_text='Barkod veya Parça Ara...', 
             multiline=False, 
             background_color=(0.9, 0.9, 0.9, 1),
+            font_size='16sp',
             use_bubble=False,
             use_handles=False
         )
@@ -280,34 +280,34 @@ class AnaEkran(Screen):
     def duzenleme_popup_ac(self, item_button):
         data = item_button.item_data
         
-        # Pop-Up İçeriğini Kaydırılabilir Yapıyoruz
         main_popup_box = BoxLayout(orientation='vertical', spacing=8, padding=10)
         scroll_view = ScrollView(size_hint=(1, 0.85))
-        content = BoxLayout(orientation='vertical', spacing=6, size_hint_y=None)
+        content = BoxLayout(orientation='vertical', spacing=8, size_hint_y=None)
         content.bind(minimum_height=content.setter('height'))
         
-        txt_ad = TextInput(text=str(data.get('parca_adi', '')), multiline=False, size_hint_y=None, height=45, use_bubble=False, use_handles=False)
-        txt_parca_kodu = TextInput(text=str(data.get('parca_kodu', '')), multiline=False, readonly=True, size_hint_y=None, height=45, use_bubble=False, use_handles=False)
-        txt_barkod = TextInput(text=str(data.get('barkod_no', '')), multiline=False, size_hint_y=None, height=45, use_bubble=False, use_handles=False)
-        txt_raf = TextInput(text=str(data.get('raf_konumu', '')), multiline=False, size_hint_y=None, height=45, use_bubble=False, use_handles=False)
-        txt_stok = TextInput(text=str(data.get('miktar', 0)), multiline=False, input_filter='int', size_hint_y=None, height=45, use_bubble=False, use_handles=False)
-        txt_kritik_stok = TextInput(text=str(data.get('kritik_seviye', 5)), multiline=False, input_filter='int', size_hint_y=None, height=45, use_bubble=False, use_handles=False)
+        # Büyütülmüş Metin Kutuları (Height=55sp, Font=16sp, readonly kaldırıldı)
+        txt_ad = TextInput(text=str(data.get('parca_adi', '')), multiline=False, size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
+        txt_parca_kodu = TextInput(text=str(data.get('parca_kodu', '')), multiline=False, size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
+        txt_barkod = TextInput(text=str(data.get('barkod_no', '')), multiline=False, size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
+        txt_raf = TextInput(text=str(data.get('raf_konumu', '')), multiline=False, size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
+        txt_stok = TextInput(text=str(data.get('miktar', 0)), multiline=False, input_filter='int', size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
+        txt_kritik_stok = TextInput(text=str(data.get('kritik_seviye', 5)), multiline=False, input_filter='int', size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
 
-        content.add_widget(Label(text="Parça Adı:", size_hint_y=None, height=25))
+        content.add_widget(Label(text="Parça Adı:", size_hint_y=None, height=25, bold=True))
         content.add_widget(txt_ad)
-        content.add_widget(Label(text="Parça Kodu:", size_hint_y=None, height=25))
+        content.add_widget(Label(text="Parça Kodu:", size_hint_y=None, height=25, bold=True))
         content.add_widget(txt_parca_kodu)
-        content.add_widget(Label(text="Barkod:", size_hint_y=None, height=25))
+        content.add_widget(Label(text="Barkod:", size_hint_y=None, height=25, bold=True))
         content.add_widget(txt_barkod)
-        content.add_widget(Label(text="Raf Kodu:", size_hint_y=None, height=25))
+        content.add_widget(Label(text="Raf Kodu:", size_hint_y=None, height=25, bold=True))
         content.add_widget(txt_raf)
-        content.add_widget(Label(text="Kritik Stok Seviyesi:", size_hint_y=None, height=25))
+        content.add_widget(Label(text="Kritik Stok Seviyesi:", size_hint_y=None, height=25, bold=True))
         content.add_widget(txt_kritik_stok)
-        content.add_widget(Label(text="Mevcut Stok Adedi:", size_hint_y=None, height=25))
+        content.add_widget(Label(text="Mevcut Stok Adedi:", size_hint_y=None, height=25, bold=True))
         
-        stok_box = BoxLayout(orientation='horizontal', spacing=5, size_hint_y=None, height=50)
-        btn_e = Button(text='-', size_hint_x=0.25, background_color=(0.7, 0.2, 0.2, 1), background_normal='')
-        btn_a = Button(text='+', size_hint_x=0.25, background_color=(0.2, 0.6, 0.2, 1), background_normal='')
+        stok_box = BoxLayout(orientation='horizontal', spacing=5, size_hint_y=None, height=55)
+        btn_e = Button(text='-', size_hint_x=0.25, background_color=(0.7, 0.2, 0.2, 1), background_normal='', font_size='20sp', bold=True)
+        btn_a = Button(text='+', size_hint_x=0.25, background_color=(0.2, 0.6, 0.2, 1), background_normal='', font_size='20sp', bold=True)
         
         btn_e.bind(on_release=lambda x: setattr(txt_stok, 'text', str(max(0, int(txt_stok.text or 0) - 1))))
         btn_a.bind(on_release=lambda x: setattr(txt_stok, 'text', str(int(txt_stok.text or 0) + 1)))
@@ -321,18 +321,26 @@ class AnaEkran(Screen):
         main_popup_box.add_widget(scroll_view)
 
         buton_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=0.15)
-        btn_kaydet = Button(text='Güncelle', background_color=(0.1, 0.5, 0.9, 1), background_normal='', bold=True)
-        btn_sil = Button(text='Sil', background_color=(0.8, 0.2, 0.2, 1), background_normal='', bold=True)
+        btn_kaydet = Button(text='Güncelle', background_color=(0.1, 0.5, 0.9, 1), background_normal='', bold=True, font_size='16sp')
+        btn_sil = Button(text='Sil', background_color=(0.8, 0.2, 0.2, 1), background_normal='', bold=True, font_size='16sp')
         popup = Popup(title='Parça Düzenle / Sil', content=main_popup_box, size_hint=(0.92, 0.90))
 
         def kaydet_action(x):
-            doc_id = str(data.get('parca_kodu'))
+            eski_doc_id = str(data.get('parca_kodu'))
+            yeni_doc_id = str(txt_parca_kodu.text.strip())
+            
             data['parca_adi'] = txt_ad.text
+            data['parca_kodu'] = yeni_doc_id
             data['barkod_no'] = txt_barkod.text
             data['raf_konumu'] = txt_raf.text
             data['miktar'] = int(txt_stok.text or 0)
             data['kritik_seviye'] = int(txt_kritik_stok.text or 5)
-            REST_parca_ekle_veya_guncelle_async(doc_id, data, self.listeyi_guncelle)
+
+            # Eğer Parça Kodu Değiştiyse Eskisini Sil, Yenisini Oluştur
+            if eski_doc_id != yeni_doc_id:
+                REST_parca_sil_async(eski_doc_id)
+            
+            REST_parca_ekle_veya_guncelle_async(yeni_doc_id, data, self.listeyi_guncelle)
             popup.dismiss()
 
         def sil_action(x):
@@ -358,26 +366,26 @@ class ParcaEkleEkrani(Screen):
         
         main_layout.add_widget(Label(text="YENİ YEDEK PARÇA EKLE", font_size='20sp', bold=True, color=(0.3, 0.7, 1, 1), size_hint_y=0.08))
 
-        form_layout = BoxLayout(orientation='vertical', spacing=4, size_hint_y=0.78)
+        form_layout = BoxLayout(orientation='vertical', spacing=6, size_hint_y=0.78)
 
-        self.txt_ad = TextInput(hint_text='Örn: Rulman 6204', multiline=False, use_bubble=False, use_handles=False)
-        self.txt_parca_kodu = TextInput(hint_text='Örn: PRC-001', multiline=False, use_bubble=False, use_handles=False)
-        self.txt_barkod = TextInput(hint_text='Örn: 86900012345', multiline=False, use_bubble=False, use_handles=False)
-        self.txt_raf = TextInput(hint_text='Örn: A-12', multiline=False, use_bubble=False, use_handles=False)
-        self.txt_stok = TextInput(hint_text='Örn: 10', multiline=False, input_filter='int', use_bubble=False, use_handles=False)
-        self.txt_kritik_stok = TextInput(hint_text='Örn: 5', multiline=False, input_filter='int', use_bubble=False, use_handles=False)
+        self.txt_ad = TextInput(hint_text='Örn: Rulman 6204', multiline=False, size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
+        self.txt_parca_kodu = TextInput(hint_text='Örn: PRC-001', multiline=False, size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
+        self.txt_barkod = TextInput(hint_text='Örn: 86900012345', multiline=False, size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
+        self.txt_raf = TextInput(hint_text='Örn: A-12', multiline=False, size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
+        self.txt_stok = TextInput(hint_text='Örn: 10', multiline=False, input_filter='int', size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
+        self.txt_kritik_stok = TextInput(hint_text='Örn: 5', multiline=False, input_filter='int', size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
 
-        form_layout.add_widget(Label(text="Parça Adı:"))
+        form_layout.add_widget(Label(text="Parça Adı:", size_hint_y=None, height=22, bold=True))
         form_layout.add_widget(self.txt_ad)
-        form_layout.add_widget(Label(text="Parça Kodu:"))
+        form_layout.add_widget(Label(text="Parça Kodu:", size_hint_y=None, height=22, bold=True))
         form_layout.add_widget(self.txt_parca_kodu)
-        form_layout.add_widget(Label(text="Barkod:"))
+        form_layout.add_widget(Label(text="Barkod:", size_hint_y=None, height=22, bold=True))
         form_layout.add_widget(self.txt_barkod)
-        form_layout.add_widget(Label(text="Raf Numarası:"))
+        form_layout.add_widget(Label(text="Raf Numarası:", size_hint_y=None, height=22, bold=True))
         form_layout.add_widget(self.txt_raf)
-        form_layout.add_widget(Label(text="Mevcut Stok Adedi:"))
+        form_layout.add_widget(Label(text="Mevcut Stok Adedi:", size_hint_y=None, height=22, bold=True))
         form_layout.add_widget(self.txt_stok)
-        form_layout.add_widget(Label(text="Kritik Stok Uyarısı Sınırı:"))
+        form_layout.add_widget(Label(text="Kritik Stok Uyarısı Sınırı:", size_hint_y=None, height=22, bold=True))
         form_layout.add_widget(self.txt_kritik_stok)
 
         main_layout.add_widget(form_layout)
@@ -421,7 +429,7 @@ class ParcaEkleEkrani(Screen):
             self.txt_kritik_stok.text = ""
 
 
-# --- KAMERA EKRANI (DİK VE BÜYÜK KAMERA) ---
+# --- KAMERA EKRANI (ORANTILI VE NET GÖRÜNTÜ) ---
 class KameraEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -443,9 +451,9 @@ class KameraEkrani(Screen):
             if not self.camera:
                 self.camera = Camera(
                     play=True, 
-                    resolution=(640, 480),
+                    resolution=(1280, 720),
                     allow_stretch=True, 
-                    keep_ratio=False, 
+                    keep_ratio=True, 
                     size_hint=(1, 1)
                 )
                 
