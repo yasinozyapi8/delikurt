@@ -23,7 +23,10 @@ FIREBASE_AKTIF = False
 db = None
 
 try:
-    key_path = "firebase_key.json"
+    # Android ve PC için dosyanın tam yolunu garantiye alıyoruz
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    key_path = os.path.join(base_dir, "firebase_key.json")
+    
     if os.path.exists(key_path):
         cred = credentials.Certificate(key_path)
         firebase_admin.initialize_app(cred)
@@ -31,10 +34,9 @@ try:
         FIREBASE_AKTIF = True
         print("✅ Firebase bağlantısı başarılı!")
     else:
-        print("⚠️ firebase_key.json bulunamadı.")
+        print(f"⚠️ {key_path} konumunda firebase_key.json bulunamadı.")
 except Exception as e:
     print("❌ Firebase başlatma hatası:", e)
-
 # --- Arka Plan Rengini Ayarla ---
 Window.clearcolor = (0.12, 0.15, 0.18, 1)
 
