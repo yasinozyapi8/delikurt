@@ -1,4 +1,6 @@
 import os
+import sys
+import threading
 import requests
 from kivy.app import App
 from kivy.core.window import Window
@@ -13,88 +15,109 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 from kivy.uix.camera import Camera
+from kivy.graphics import PushMatrix, PopMatrix, Rotate
 
-# Window Rengi
+# --- ANDROID KLAVYE VE PENCERE AYARLARI ---
 Window.clearcolor = (0.12, 0.15, 0.18, 1)
+# Android klavyesinin ekrana basıldığında sorunsuz açılmasını sağlar
+Window.softinput_mode = 'below_target'
 
 # 🔥 FIREBASE REST API YAPILANDIRMASI
-PROJECT_ID = "stok-takip-f061b"  # <--- Gerçek Proje Kimliğin
+PROJECT_ID = "stok-takip-f061b"
 BASE_URL = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/stoklar"
 
 VERITABANI = []
+VERI_KILIDI = threading.Lock()
 
-# --- FIREBASE REST İŞLEMLERİ ---
-def REST_verileri_cek():
-    global VERITABANI
-    try:
-        res = requests.get(BASE_URL, timeout=5)
-        if res.status_code == 200:
-            data = res.json()
-            yeni_liste = []
-            documents = data.get("documents", [])
-            for doc in documents:
-                fields = doc.get("fields", {})
-                parca_kodu = fields.get("parca_kodu", {}).get("stringValue", "-")
-                barkod_no = fields.get("barkod_no", {}).get("stringValue", parca_kodu)
-                parca_adi = fields.get("parca_adi", {}).get("stringValue", "-")
-                kategori = fields.get("kategori", {}).get("stringValue", "Genel")
-                raf_konumu = fields.get("raf_konumu", {}).get("stringValue", "Belirtilmedi")
+
+# --- FIREBASE ARKA PLAN (THREADING) İŞLEMLERİ ---
+def REST_verileri_cek_async(on_success_callback=None):
+    def run():
+        global VERITABANI
+        try:
+            res = requests.get(BASE_URL, timeout=4)
+            if res.status_code == 200:
+                data = res.json()
+                yeni_liste = []
+                documents = data.get("documents", [])
+                for doc in documents:
+                    fields = doc.get("fields", {})
+                    parca_kodu = fields.get("parca_kodu", {}).get("stringValue", "-")
+                    barkod_no = fields.get("barkod_no", {}).get("stringValue", parca_kodu)
+                    parca_adi = fields.get("parca_adi", {}).get("stringValue", "-")
+                    kategori = fields.get("kategori", {}).get("stringValue", "Genel")
+                    raf_konumu = fields.get("raf_konumu", {}).get("stringValue", "Belirtilmedi")
+                    
+                    m_raw = fields.get("miktar", {})
+                    miktar = int(m_raw.get("integerValue", m_raw.get("doubleValue", 0)))
+                    
+                    k_raw = fields.get("kritik_seviye", {})
+                    kritik = int(k_raw.get("integerValue", k_raw.get("doubleValue", 5)))
+
+                    yeni_liste.append({
+                        "parca_kodu": parca_kodu,
+                        "barkod_no": barkod_no,
+                        "parca_adi": parca_adi,
+                        "kategori": kategori,
+                        "raf_konumu": raf_konumu,
+                        "miktar": miktar,
+                        "kritik_seviye": kritik
+                    })
                 
-                # Miktar ve Kritik Stok Seviyesi Tipi Okuma
-                m_raw = fields.get("miktar", {})
-                miktar = int(m_raw.get("integerValue", m_raw.get("doubleValue", 0)))
+                with VERI_KILIDI:
+                    VERITABANI = yeni_liste
                 
-                k_raw = fields.get("kritik_seviye", {})
-                kritik = int(k_raw.get("integerValue", k_raw.get("doubleValue", 5)))
+                if on_success_callback:
+                    Clock.schedule_once(lambda dt: on_success_callback(), 0)
+        except Exception as e:
+            print("Arka Plan Veri Çekme Hatası:", e)
 
-                yeni_liste.append({
-                    "parca_kodu": parca_kodu,
-                    "barkod_no": barkod_no,
-                    "parca_adi": parca_adi,
-                    "kategori": kategori,
-                    "raf_konumu": raf_konumu,
-                    "miktar": miktar,
-                    "kritik_seviye": kritik
-                })
-            VERITABANI = yeni_liste
-    except Exception as e:
-        print("REST Veri Çekme Hatası:", e)
+    threading.Thread(target=run, daemon=True).start()
 
 
-def REST_stok_guncelle(doc_id, yeni_stok):
-    url = f"{BASE_URL}/{doc_id}?updateMask.fieldPaths=miktar"
-    payload = {"fields": {"miktar": {"integerValue": int(yeni_stok)}}}
-    try:
-        requests.patch(url, json=payload, timeout=5)
-    except Exception as e:
-        print("REST Stok Güncelleme Hatası:", e)
+def REST_stok_guncelle_async(doc_id, yeni_stok, callback=None):
+    def run():
+        url = f"{BASE_URL}/{doc_id}?updateMask.fieldPaths=miktar"
+        payload = {"fields": {"miktar": {"integerValue": int(yeni_stok)}}}
+        try:
+            requests.patch(url, json=payload, timeout=4)
+            REST_verileri_cek_async(callback)
+        except Exception as e:
+            print("Stok Güncelleme Hatası:", e)
+    threading.Thread(target=run, daemon=True).start()
 
 
-def REST_parca_ekle_veya_guncelle(doc_id, p_data):
-    url = f"{BASE_URL}/{doc_id}"
-    payload = {
-        "fields": {
-            "parca_kodu": {"stringValue": str(p_data.get("parca_kodu", "-"))},
-            "barkod_no": {"stringValue": str(p_data.get("barkod_no", "-"))},
-            "parca_adi": {"stringValue": str(p_data.get("parca_adi", "-"))},
-            "kategori": {"stringValue": str(p_data.get("kategori", "Genel"))},
-            "raf_konumu": {"stringValue": str(p_data.get("raf_konumu", "Belirtilmedi"))},
-            "miktar": {"integerValue": int(p_data.get("miktar", 0))},
-            "kritik_seviye": {"integerValue": int(p_data.get("kritik_seviye", 5))}
+def REST_parca_ekle_veya_guncelle_async(doc_id, p_data, callback=None):
+    def run():
+        url = f"{BASE_URL}/{doc_id}"
+        payload = {
+            "fields": {
+                "parca_kodu": {"stringValue": str(p_data.get("parca_kodu", "-"))},
+                "barkod_no": {"stringValue": str(p_data.get("barkod_no", "-"))},
+                "parca_adi": {"stringValue": str(p_data.get("parca_adi", "-"))},
+                "kategori": {"stringValue": str(p_data.get("kategori", "Genel"))},
+                "raf_konumu": {"stringValue": str(p_data.get("raf_konumu", "Belirtilmedi"))},
+                "miktar": {"integerValue": int(p_data.get("miktar", 0))},
+                "kritik_seviye": {"integerValue": int(p_data.get("kritik_seviye", 5))}
+            }
         }
-    }
-    try:
-        requests.patch(url, json=payload, timeout=5)
-    except Exception as e:
-        print("REST Parça Kayıt Hatası:", e)
+        try:
+            requests.patch(url, json=payload, timeout=4)
+            REST_verileri_cek_async(callback)
+        except Exception as e:
+            print("Parça Kayıt Hatası:", e)
+    threading.Thread(target=run, daemon=True).start()
 
 
-def REST_parca_sil(doc_id):
-    url = f"{BASE_URL}/{doc_id}"
-    try:
-        requests.delete(url, timeout=5)
-    except Exception as e:
-        print("REST Silme Hatası:", e)
+def REST_parca_sil_async(doc_id, callback=None):
+    def run():
+        url = f"{BASE_URL}/{doc_id}"
+        try:
+            requests.delete(url, timeout=4)
+            REST_verileri_cek_async(callback)
+        except Exception as e:
+            print("Silme Hatası:", e)
+    threading.Thread(target=run, daemon=True).start()
 
 
 # --- ANDROID İZİNLERİ ---
@@ -148,7 +171,13 @@ class AnaEkran(Screen):
         ))
 
         arama_box = BoxLayout(orientation='horizontal', size_hint_y=0.09, spacing=6)
-        self.txt_barkod_ara = TextInput(hint_text='Barkod veya Parça Ara...', multiline=False, background_color=(0.9, 0.9, 0.9, 1))
+        self.txt_barkod_ara = TextInput(
+            hint_text='Barkod veya Parça Ara...', 
+            multiline=False, 
+            background_color=(0.9, 0.9, 0.9, 1),
+            use_bubble=False,
+            use_handles=False
+        )
         btn_ara = Button(text='Ara', size_hint_x=0.22, background_color=(0.2, 0.5, 0.9, 1), background_normal='', bold=True)
         btn_ara.bind(on_release=self.barkod_ara)
         
@@ -175,12 +204,18 @@ class AnaEkran(Screen):
         self.add_widget(main_layout)
 
     def on_enter(self):
-        REST_verileri_cek()
-        self.listeyi_guncelle(self.txt_barkod_ara.text)
+        REST_verileri_cek_async(self.listeyi_guncelle)
 
-    def listeyi_guncelle(self, filtre=""):
+    def listeyi_guncelle(self, filtre=None):
+        if filtre is None or not isinstance(filtre, str):
+            filtre = self.txt_barkod_ara.text
+
         self.liste_layout.clear_widgets()
-        for item in VERITABANI:
+        
+        with VERI_KILIDI:
+            yerel_liste = list(VERITABANI)
+
+        for item in yerel_liste:
             kod = str(item.get('parca_kodu', '-'))
             barkod = str(item.get('barkod_no', kod))
             ad = str(item.get('parca_adi', '-'))
@@ -204,7 +239,7 @@ class AnaEkran(Screen):
             btn_details.text_size = (btn_details.width, None)
             btn_details.bind(size=lambda s, w: setattr(s, 'text_size', (s.width - 15, None)))
             btn_details.item_data = item
-            btn_details.on_long_press_callback = self.duzenleme_popup_ac
+            btn_details.on_long_press_callback = lambda btn: Clock.schedule_once(lambda dt: self.duzenleme_popup_ac(btn), 0.1)
             
             stok_box = BoxLayout(orientation='vertical', size_hint_x=0.26, spacing=4)
             btn_plus = Button(text='+', font_size='22sp', bold=True, background_color=(0.1, 0.7, 0.3, 1), background_normal='')
@@ -214,8 +249,7 @@ class AnaEkran(Screen):
                 def arttir(x):
                     d['miktar'] = int(d.get('miktar', 0)) + 1
                     doc_id = str(d.get('parca_kodu'))
-                    REST_stok_guncelle(doc_id, d['miktar'])
-                    self.listeyi_guncelle(self.txt_barkod_ara.text)
+                    REST_stok_guncelle_async(doc_id, d['miktar'], self.listeyi_guncelle)
                 return arttir
 
             def make_eksilt(d):
@@ -224,8 +258,7 @@ class AnaEkran(Screen):
                     if curr > 0:
                         d['miktar'] = curr - 1
                         doc_id = str(d.get('parca_kodu'))
-                        REST_stok_guncelle(doc_id, d['miktar'])
-                        self.listeyi_guncelle(self.txt_barkod_ara.text)
+                        REST_stok_guncelle_async(doc_id, d['miktar'], self.listeyi_guncelle)
                 return eksilt
 
             btn_plus.bind(on_release=make_arttir(item))
@@ -246,30 +279,35 @@ class AnaEkran(Screen):
 
     def duzenleme_popup_ac(self, item_button):
         data = item_button.item_data
-        content = BoxLayout(orientation='vertical', spacing=6, padding=10)
         
-        txt_ad = TextInput(text=str(data.get('parca_adi', '')), multiline=False)
-        txt_parca_kodu = TextInput(text=str(data.get('parca_kodu', '')), multiline=False, readonly=True)
-        txt_barkod = TextInput(text=str(data.get('barkod_no', '')), multiline=False)
-        txt_raf = TextInput(text=str(data.get('raf_konumu', '')), multiline=False)
-        txt_stok = TextInput(text=str(data.get('miktar', 0)), multiline=False, input_filter='int')
-        txt_kritik_stok = TextInput(text=str(data.get('kritik_seviye', 5)), multiline=False, input_filter='int')
+        # Pop-Up İçeriğini Kaydırılabilir Yapıyoruz
+        main_popup_box = BoxLayout(orientation='vertical', spacing=8, padding=10)
+        scroll_view = ScrollView(size_hint=(1, 0.85))
+        content = BoxLayout(orientation='vertical', spacing=6, size_hint_y=None)
+        content.bind(minimum_height=content.setter('height'))
+        
+        txt_ad = TextInput(text=str(data.get('parca_adi', '')), multiline=False, size_hint_y=None, height=45, use_bubble=False, use_handles=False)
+        txt_parca_kodu = TextInput(text=str(data.get('parca_kodu', '')), multiline=False, readonly=True, size_hint_y=None, height=45, use_bubble=False, use_handles=False)
+        txt_barkod = TextInput(text=str(data.get('barkod_no', '')), multiline=False, size_hint_y=None, height=45, use_bubble=False, use_handles=False)
+        txt_raf = TextInput(text=str(data.get('raf_konumu', '')), multiline=False, size_hint_y=None, height=45, use_bubble=False, use_handles=False)
+        txt_stok = TextInput(text=str(data.get('miktar', 0)), multiline=False, input_filter='int', size_hint_y=None, height=45, use_bubble=False, use_handles=False)
+        txt_kritik_stok = TextInput(text=str(data.get('kritik_seviye', 5)), multiline=False, input_filter='int', size_hint_y=None, height=45, use_bubble=False, use_handles=False)
 
-        content.add_widget(Label(text="Parça Adı:"))
+        content.add_widget(Label(text="Parça Adı:", size_hint_y=None, height=25))
         content.add_widget(txt_ad)
-        content.add_widget(Label(text="Parça Kodu:"))
+        content.add_widget(Label(text="Parça Kodu:", size_hint_y=None, height=25))
         content.add_widget(txt_parca_kodu)
-        content.add_widget(Label(text="Barkod:"))
+        content.add_widget(Label(text="Barkod:", size_hint_y=None, height=25))
         content.add_widget(txt_barkod)
-        content.add_widget(Label(text="Raf Kodu:"))
+        content.add_widget(Label(text="Raf Kodu:", size_hint_y=None, height=25))
         content.add_widget(txt_raf)
-        content.add_widget(Label(text="Kritik Stok Seviyesi:"))
+        content.add_widget(Label(text="Kritik Stok Seviyesi:", size_hint_y=None, height=25))
         content.add_widget(txt_kritik_stok)
-        content.add_widget(Label(text="Mevcut Stok Adedi:"))
+        content.add_widget(Label(text="Mevcut Stok Adedi:", size_hint_y=None, height=25))
         
-        stok_box = BoxLayout(orientation='horizontal', spacing=5)
-        btn_e = Button(text='-', size_hint_x=0.2, background_color=(0.7, 0.2, 0.2, 1), background_normal='')
-        btn_a = Button(text='+', size_hint_x=0.2, background_color=(0.2, 0.6, 0.2, 1), background_normal='')
+        stok_box = BoxLayout(orientation='horizontal', spacing=5, size_hint_y=None, height=50)
+        btn_e = Button(text='-', size_hint_x=0.25, background_color=(0.7, 0.2, 0.2, 1), background_normal='')
+        btn_a = Button(text='+', size_hint_x=0.25, background_color=(0.2, 0.6, 0.2, 1), background_normal='')
         
         btn_e.bind(on_release=lambda x: setattr(txt_stok, 'text', str(max(0, int(txt_stok.text or 0) - 1))))
         btn_a.bind(on_release=lambda x: setattr(txt_stok, 'text', str(int(txt_stok.text or 0) + 1)))
@@ -279,10 +317,13 @@ class AnaEkran(Screen):
         stok_box.add_widget(btn_a)
         content.add_widget(stok_box)
 
-        buton_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=0.4)
-        btn_kaydet = Button(text='Güncelle', background_color=(0.1, 0.5, 0.9, 1), background_normal='')
-        btn_sil = Button(text='Sil', background_color=(0.8, 0.2, 0.2, 1), background_normal='')
-        popup = Popup(title='Parça Düzenle / Sil', content=content, size_hint=(0.92, 0.95))
+        scroll_view.add_widget(content)
+        main_popup_box.add_widget(scroll_view)
+
+        buton_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=0.15)
+        btn_kaydet = Button(text='Güncelle', background_color=(0.1, 0.5, 0.9, 1), background_normal='', bold=True)
+        btn_sil = Button(text='Sil', background_color=(0.8, 0.2, 0.2, 1), background_normal='', bold=True)
+        popup = Popup(title='Parça Düzenle / Sil', content=main_popup_box, size_hint=(0.92, 0.90))
 
         def kaydet_action(x):
             doc_id = str(data.get('parca_kodu'))
@@ -291,24 +332,21 @@ class AnaEkran(Screen):
             data['raf_konumu'] = txt_raf.text
             data['miktar'] = int(txt_stok.text or 0)
             data['kritik_seviye'] = int(txt_kritik_stok.text or 5)
-            REST_parca_ekle_veya_guncelle(doc_id, data)
+            REST_parca_ekle_veya_guncelle_async(doc_id, data, self.listeyi_guncelle)
             popup.dismiss()
-            REST_verileri_cek()
-            self.listeyi_guncelle()
 
         def sil_action(x):
             doc_id = str(data.get('parca_kodu'))
-            REST_parca_sil(doc_id)
+            REST_parca_sil_async(doc_id, self.listeyi_guncelle)
             popup.dismiss()
-            REST_verileri_cek()
-            self.listeyi_guncelle()
 
         btn_kaydet.bind(on_release=kaydet_action)
         btn_sil.bind(on_release=sil_action)
 
         buton_box.add_widget(btn_kaydet)
         buton_box.add_widget(btn_sil)
-        content.add_widget(buton_box)
+        main_popup_box.add_widget(buton_box)
+        
         popup.open()
 
 
@@ -322,12 +360,12 @@ class ParcaEkleEkrani(Screen):
 
         form_layout = BoxLayout(orientation='vertical', spacing=4, size_hint_y=0.78)
 
-        self.txt_ad = TextInput(hint_text='Örn: Rulman 6204', multiline=False)
-        self.txt_parca_kodu = TextInput(hint_text='Örn: PRC-001', multiline=False)
-        self.txt_barkod = TextInput(hint_text='Örn: 86900012345', multiline=False)
-        self.txt_raf = TextInput(hint_text='Örn: A-12', multiline=False)
-        self.txt_stok = TextInput(hint_text='Örn: 10', multiline=False, input_filter='int')
-        self.txt_kritik_stok = TextInput(hint_text='Örn: 5', multiline=False, input_filter='int')
+        self.txt_ad = TextInput(hint_text='Örn: Rulman 6204', multiline=False, use_bubble=False, use_handles=False)
+        self.txt_parca_kodu = TextInput(hint_text='Örn: PRC-001', multiline=False, use_bubble=False, use_handles=False)
+        self.txt_barkod = TextInput(hint_text='Örn: 86900012345', multiline=False, use_bubble=False, use_handles=False)
+        self.txt_raf = TextInput(hint_text='Örn: A-12', multiline=False, use_bubble=False, use_handles=False)
+        self.txt_stok = TextInput(hint_text='Örn: 10', multiline=False, input_filter='int', use_bubble=False, use_handles=False)
+        self.txt_kritik_stok = TextInput(hint_text='Örn: 5', multiline=False, input_filter='int', use_bubble=False, use_handles=False)
 
         form_layout.add_widget(Label(text="Parça Adı:"))
         form_layout.add_widget(self.txt_ad)
@@ -369,7 +407,11 @@ class ParcaEkleEkrani(Screen):
                 "miktar": int(self.txt_stok.text or 0),
                 "kritik_seviye": int(self.txt_kritik_stok.text or 5)
             }
-            REST_parca_ekle_veya_guncelle(kod, yeni_parca)
+            
+            def donus():
+                self.manager.current = 'ana_ekran'
+
+            REST_parca_ekle_veya_guncelle_async(kod, yeni_parca, donus)
             
             self.txt_ad.text = ""
             self.txt_parca_kodu.text = ""
@@ -377,38 +419,53 @@ class ParcaEkleEkrani(Screen):
             self.txt_raf.text = ""
             self.txt_stok.text = ""
             self.txt_kritik_stok.text = ""
-            
-            REST_verileri_cek()
-            self.manager.current = 'ana_ekran'
 
 
-# --- KAMERA EKRANI ---
+# --- KAMERA EKRANI (DİK VE BÜYÜK KAMERA) ---
 class KameraEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
         self.layout.add_widget(Label(text="BARKOD TARAMA EKRANI", font_size='18sp', size_hint_y=0.08, bold=True))
 
-        self.camera = None
-        self.cam_container = BoxLayout(size_hint=(1, 0.80))
+        self.cam_container = BoxLayout(size_hint=(1, 0.82))
         self.layout.add_widget(self.cam_container)
 
-        btn_geri = Button(text='Geri Dön', size_hint_y=0.12, background_color=(0.5, 0.5, 0.5, 1), background_normal='', bold=True, font_size='18sp')
+        btn_geri = Button(text='Geri Dön', size_hint_y=0.10, background_color=(0.5, 0.5, 0.5, 1), background_normal='', bold=True, font_size='18sp')
         btn_geri.bind(on_release=self.geri_don)
         self.layout.add_widget(btn_geri)
 
+        self.camera = None
         self.add_widget(self.layout)
 
     def on_enter(self):
         try:
             if not self.camera:
-                self.camera = Camera(play=True, resolution=(640, 480))
+                self.camera = Camera(
+                    play=True, 
+                    resolution=(640, 480),
+                    allow_stretch=True, 
+                    keep_ratio=False, 
+                    size_hint=(1, 1)
+                )
+                
+                with self.camera.canvas.before:
+                    PushMatrix()
+                    self.rot = Rotate(angle=-90, origin=self.camera.center)
+                with self.camera.canvas.after:
+                    PopMatrix()
+
+                self.camera.bind(pos=self._rotation_merkezini_guncelle, size=self._rotation_merkezini_guncelle)
                 self.cam_container.add_widget(self.camera)
             else:
                 self.camera.play = True
         except Exception as e:
             self.cam_container.clear_widgets()
             self.cam_container.add_widget(Label(text=f"Kamera Başlatılamadı:\n{e}"))
+
+    def _rotation_merkezini_guncelle(self, instance, value):
+        if hasattr(self, 'rot') and self.camera:
+            self.rot.origin = self.camera.center
 
     def on_leave(self):
         if self.camera:
@@ -429,14 +486,12 @@ class StokTakipApp(App):
         return sm
 
     def on_start(self):
-        REST_verileri_cek()
+        REST_verileri_cek_async(lambda: self.root.get_screen('ana_ekran').listeyi_guncelle())
         
         def verileri_periyodik_cek(dt):
-            REST_verileri_cek()
-            ana_ekran = self.root.get_screen('ana_ekran')
-            ana_ekran.listeyi_guncelle(ana_ekran.txt_barkod_ara.text)
+            REST_verileri_cek_async(lambda: self.root.get_screen('ana_ekran').listeyi_guncelle())
 
-        Clock.schedule_interval(verileri_periyodik_cek, 3)
+        Clock.schedule_interval(verileri_periyodik_cek, 4)
 
 
 if __name__ == '__main__':
