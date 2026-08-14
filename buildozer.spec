@@ -42,7 +42,7 @@ version = 0.1
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
-requirements = python3,kivy
+requirements = python3,kivy,firebase-admin,requests,urllib3,certifi,idna,charset-normalizer
 
 # (str) Custom source folders for requirements
 # Sets custom source for any requirements with recipes
@@ -464,7 +464,7 @@ warn_on_root = 1
 #
 #   Buildozer supports lists - i.e.
 #       [app]
-#       source.include_exts = py,png,jpg
+#       source.include_exts = py,png,jpg,kv,atlas,json
 #       #                     ^ This is a list.
 #
 #       [app:source.include_exts]
