@@ -15,12 +15,12 @@ from PIL import Image, ImageTk
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
 
-# --- GÖMÜLÜ FIREBASE SERTİFİKA BİLGİLERİ ---
+# --- TAZE GÖMÜLÜ FIREBASE SERTİFİKA BİLGİLERİ ---
 FIREBASE_KEY_DATA = {
   "type": "service_account",
   "project_id": "stok-takip-f061b",
-  "private_key_id": "8928e7742589176999fe7310c4b1da525b8e06b5",
-  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCa0Y4ZSSiRo9iV\nnwPqvYZYhdR5U/lOo/a9Ls4yk8RQ3+0A9XyEDSaJifP6UWOFpoe8giig0Enwlkfz\n3tRXiNv2L18Vk8mh1MrstM/pMijRcLWHuvj3sUqwr59LFCZmcUOdoCOorWjSbyv7\nt/VM4YGmpjba+4Zd2ccLZuT2Wu9I/TUcjhVKXHo9SK+hb5dfXBhGOm/ndXmeB9Es\n/wNoZPMWjuoncCRF2DmUwW7oZiCp8TC1Uy6G9sGHqc5887ZBuCYD32fBg98lrxAC\nex4UIBcXKGIUyn5NvXDb4g5K7Sg0JNc/sJy1IvdgBN2hFGN4pxFmT+u6omIjBBmS\n5KAei2mDAgMBAAECggEAD0qNV3ADYsclGDoZf/DyOQIW51jk8eB9+VeLJDG2HSrQ\n1NxqTPyjhsgqYdnyE3xMQdE1RBTuiKW/O5YRsQeieiFZqd7r9mD3HgQJ2QWMRIt2\nUo6kEorfTq459Idr94hOXl43x2xBQy+Zz4Xu44YOcTBPkLdxIQnmf/jMuoxmv/Wj\nGNrotpd24O0DdusQwhR7ZmZWlUuOkP5+JDeP+0OGGqzZNY8lUjs34Yt7Ca8sbjKc\nQELWa9XxunWuORBtzluxXo7S2cBBTGVL34Rf6TrgoXADwtfU9FADKYkz6Wgvgnqx\n/WE2r8FphLJYLp5ve3WadX/fOdNSxhvyJ8bC+iadSQKBgQDK5YqC7Z2du8/yPt8U\nKnYBo3Jhx7uwvOGsmAEYeggsFgzwVpcIpT+bQ7DwX5Q9gWIxsnsCLPR6TQXs99vr\nE2rLMHFRGkINoLSy3BrlUnLUjbQDwiKmLD0izdWGXML3T5I0KzVRYkeYQzcrhOKg\nk18U84+cuuB+3IVYCtklk0D6fQKBgQDDVrE/fNAL6NEx+lULNaQF1Q73jlakHeTN\ngb5GkqDn0deGUSFylJdtcY8vlp00I8+kDcGkl9lSpIkyry/OE4whMXg8hLoLjS49\ny4WydtGwoOvMWoCeqR2ck8nz1cyAwV292gUy2Bfe2eRmz3wR1uHLha6Z/ue2XsoL\n7xKvs4cz/wKBgCH/0PQbqTvTSwdG7c7NRrUDlJk6BQOawx5O4nAdkt0AXO6xM+Ho\n/v2fnDjLa2XbFn9Jbz9wFQ+hdIq/BgUgXdbqqTJz+fmaom0OYRtoc4GWtUGj+HZs\nF1qLr2oyhSE4HkHLs8WNeH3VVZtfSzKpP1edcMVMs23OujGEr9qSEGNpAoGAMKVp\nVNc/dIfReTHPdhAwvecWaB5Bg3OSZH94JFklyzWeB+wyeTd6Ep5iO0a19aMpdcCb\nReMvEv640C+Cpz6E+ks4l1Gyh2fsaSVDMXOXuvYIYwby2xBguHqxo5DN8g61yq79\n9nCMWUpIMDZhvouWBbpQBjfN+sPWa2xpaeo6tH8CgYBX+uTVazbmmXzuL4LeYz1H\nJhl1BOC/nRc7abYkXbK/hoAcPLZCYNUkEyVaXseMfTRmciooZs21sFiTRNfANdJ/\n+DTYJ0PZ01qBElyjXcbJ2mneTOy0CBa5mPfWuHikIl9nJSYEnKPm8SlQ8ZxuyTns\n9+N7K41+VeXb5U44XVaF5w==\n-----END PRIVATE KEY-----\n",
+  "private_key_id": "1ad784c4dd44d58725ec87a1b4d89091652afdfa",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC+qyDZp7ZpJGqC\nUpnTXiN3ZUc58eEND2z9eyoN6hN9PSGMgOYUA6xT0xm0AonSJL6VdClvoiQr0GYB\nQlkgNuQIjRUx979OfdtPMPIUFvcnwW4hiGKt+G3XJqX/kil2SZrc6xVBugKsisHU\n1fri97pqj7LyhDxrwS9dH9gOKYSNaLHEpBk7NgSEgK343K2U3fZaQOravbqhijle\nVYfbeKNb8qJr2ew3KBnjFicEWVZWF6Tau2/DU6YxbhS1/Wn8yoN8EfpiuRWdvtkO\nTDWvlQy1tPnlvc6qhuc6oJJ3h2od2EgKcqD7SE9lMLqGho9Pz+JYfFxgUC4aCoew\niMamLJ+5AgMBAAECggEAA32+rD2V6XbxPFGm32fp3lXMaBM1u7d8l2eZ7YdLtA9a\nfegeTl+C2EYVQmaJf3+Mvc/SsmiVoPe/5mYAm8ZlhoKO0MtohVdonJqY1CVXgTLZ\ngWOt6uGRoU7j2zoh6DiQzVrAmON/CQnBYtRIM7+1eh4HeMlTEeYHp/zdR+UauDwa\naE9/WSzj5wbXRGgqUmD1Leq3atHQZIu2x2Zl1qa6y88WfRk+cgNXKx9VIZwC5bDX\nNkfu49gKjTeUDxSlLMqkjwsokrT1oAtvRd/1y20ikAO7aqrPt7kGmJofdWo53xLx\ndFQ3T0ExT3VoIPG/QItu4mdmQ69NuEv8jPYrQ+nXwQKBgQDt1qpoq1em6RriLvaU\nn/t+06/9bNnVDEOyqINDGGNMg+QThaGRKmnHNQ+6AlKN5FjL4SsOk+zm2C9aGx8y\n6zaG9aKpA3JqqAXwiRS55n99KDJV1DnJ61uRZX9rvsD3k5vVhv0DEss6THyL0IIj\nRiPKSy6HSIiGgpJ/ndtrMI/GlwKBgQDNOl50r2Qb6waWMGt9G3A26ZMz7aCmyU5Z\nrC8Eicnv5wPT+sHW8Q5IxIgUD2+iiNdm0MlNmyY8hSn6CaaxpGPpZFygVY/7z/MU\nnUYPiwTsUiQKz1VuBPvoQjPpYWAzHbBjTwy740LvaTDbb6TOiRlxQpOpxKwMXsjq\n23vQxnFmLwKBgBs7iSeS9uZVqo5bckByUQmkk3IhFJAgZ1/9i4oTMMuCDottsaI9\niP8WREa4HVvB2aj+jz+MEIQeHM3kbR4XcJbjaUyQ6Hjt5EA2cfkXO2HJSHorYrKM\nEGAFjyF3JgEzFZTNcAr6C+sQ9vHLXhtL3K09DobO91LvgHa8THNpjAzhAoGBAJrn\nssIKXNrBxF/6vjdZTZL1LNnmQ/uAOPZwg7C+PEErMvV+8W7G1oxQY5IYsJ+TAFsn\nvrooIG1P6gZD4KF3Pr68tTmEO8DLDmSB7Y7v1NB3k6LhKk93zZha2AoRKOaMQ0ZC\nNY9gE3bYBDutgk0uqJiXsxNSUranmKnE7yj/kDqbAoGAWjYDOEUuYoFmqjpTHv1e\nvIHmVYqUyn4J0hwA8DbsdmEskaWWtQtA9cNELiGhPZmeoFq0p77a8uzKjsmJ4ns5\n2BOsJinm+v6SsC56OzI5qqpz7MAl5mutbhngeF4ljNCao9XTykJS+kZNIZoDkUG5\neJGz65AZu92DCHwLG2z+C7Q=\n-----END PRIVATE KEY-----\n",
   "client_email": "firebase-adminsdk-fbsvc@stok-takip-f061b.iam.gserviceaccount.com",
   "client_id": "117747810902719699886",
   "auth_uri": "https://accounts.google.com/o/oauth2/auth",
@@ -31,7 +31,6 @@ FIREBASE_KEY_DATA = {
 }
 
 def dosya_yolu(goreceli_yol):
-    """Görsel veya ikon dosyalarını PyInstaller içinden/dışından bulur."""
     olasi_yollar = [
         os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else None,
         os.path.abspath("."),
@@ -77,7 +76,6 @@ def build_firestore_fields(data):
 
 class FirestoreRESTClient:
     def __init__(self):
-        # Dışarıdan dosya okumak yerine koddaki sözlükten oturum açar
         self.key_data = FIREBASE_KEY_DATA
         self.project_id = self.key_data.get("project_id")
         self.creds = service_account.Credentials.from_service_account_info(
@@ -129,7 +127,6 @@ class StokUygulamasi:
         self.root.geometry("1100x690")
         self.root.configure(bg="#f4f6f9")
 
-        # Sağ üst X butonuna basıldığında süreci Görev Yöneticisi'nden tamamen sil
         self.root.protocol("WM_DELETE_WINDOW", self.uygulamayi_kapat)
 
         try:
@@ -506,7 +503,6 @@ class StokUygulamasi:
                 mevcut_data["miktar"] = yeni_miktar
                 self.client.set_doc("stoklar", parca_kodu, mevcut_data)
                 
-                # Stok hareketi kaydı
                 hareket_id = datetime.now().strftime("%Y%m%d%H%M%S")
                 self.client.set_doc("stok_hareketleri", hareket_id, {
                     "parca_kodu": parca_kodu,
