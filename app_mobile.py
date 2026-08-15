@@ -20,7 +20,7 @@ from kivy.uix.popup import Popup
 from kivy.uix.camera import Camera
 from kivy.uix.image import AsyncImage
 from kivy.uix.widget import Widget
-from kivy.graphics import Color, Line
+from kivy.graphics import PushMatrix, PopMatrix, Rotate, Color, Line
 
 Window.clearcolor = (0.12, 0.15, 0.18, 1)
 Window.softinput_mode = 'below_target'
@@ -455,7 +455,7 @@ class BarkodVizoru(Widget):
     def _ciz(self, *args):
         self.canvas.before.clear()
         with self.canvas.before:
-            Color(0, 1, 0, 0.9)  # Parlak Yeşil Çerçeve
+            Color(0, 1, 0, 0.9)
             w, h = self.size
             x, y = self.pos
             box_w = w * 0.75
@@ -502,7 +502,15 @@ class KameraEkrani(Screen):
                     pos_hint={'x': 0, 'y': 0}
                 )
                 
-                # Kamera ve Çerçevenin tam üst üste oturması için FloatLayout
+                # Kamera kadrajını dikey formata çevirmek için Rotate ekliyoruz
+                with self.camera.canvas.before:
+                    PushMatrix()
+                    self.rot = Rotate(angle=-90, origin=self.camera.center)
+                with self.camera.canvas.after:
+                    PopMatrix()
+
+                self.camera.bind(pos=self._rotation_merkezini_guncelle, size=self._rotation_merkezini_guncelle)
+                
                 vizor_box = FloatLayout(size_hint=(1, 1))
                 vizor_box.add_widget(self.camera)
                 
@@ -516,6 +524,10 @@ class KameraEkrani(Screen):
         except Exception as e:
             self.cam_container.clear_widgets()
             self.cam_container.add_widget(Label(text=f"Kamera Başlatılamadı:\n{e}"))
+
+    def _rotation_merkezini_guncelle(self, instance, value):
+        if hasattr(self, 'rot') and self.camera:
+            self.rot.origin = self.camera.center
 
     def barkod_isle(self, okunan_barkod):
         if not okunan_barkod: return
