@@ -10,6 +10,18 @@ import pandas as pd
 from datetime import datetime
 import qrcode
 from PIL import Image, ImageTk
+FIREBASE_KEY_DATA = {
+  "type": "service_account",
+  "project_id": "stok-takip-f061b",
+  "private_key_id": "BURAYA_JSON_ICINDEKI_PRIVATE_KEY_ID",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nBURAYA_JSON_ICINDEKI_PRIVATE_KEY\n-----END PRIVATE KEY-----\n",
+  "client_email": "BURAYA_JSON_ICINDEKI_CLIENT_EMAIL",
+  "client_id": "BURAYA_JSON_ICINDEKI_CLIENT_ID",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "BURAYA_JSON_ICINDEKI_CLIENT_CERT_URL"
+}
 
 # Google OAuth Kütüphaneleri
 from google.oauth2 import service_account
@@ -61,14 +73,14 @@ def build_firestore_fields(data):
 
 
 class FirestoreRESTClient:
-    def __init__(self, key_path):
-        with open(key_path, "r", encoding="utf-8") as f:
-            self.key_data = json.load(f)
+    def __init__(self):
+        # Dışarıdan .json dosyası okumak yerine koddaki sözlükten oku
+        self.key_data = FIREBASE_KEY_DATA
         self.project_id = self.key_data.get("project_id")
-        self.creds = service_account.Credentials.from_service_account_file(
-            key_path,
+        self.creds = service_account.Credentials.from_service_account_info(
+            self.key_data,
             scopes=['https://www.googleapis.com/auth/cloud-platform']
-        )
+        )        )
 
     def _get_token(self):
         if not self.creds.valid:
@@ -136,15 +148,23 @@ class StokUygulamasi:
     def baglantiyi_ve_verileri_baslat(self):
         def arkaplan_islem():
             try:
-                self.durum_guncelle("⏳ [1/3] Yeni sertifika kontrol ediliyor...", "#2980b9")
-                key_path = dosya_yolu("firebase_key.json")
-                if not os.path.exists(key_path):
-                    self.durum_guncelle("❌ firebase_key.json bulunamadı!", "red")
-                    self.root.after(0, lambda: messagebox.showerror("Hata", f"Anahtar dosyası bulunamadı:\n{key_path}"))
-                    return
+                self.durum_guncelle("⏳ [1/2] Güvenli oturum açılıyor...", "#2980b9")
+                if not self.client:
+                    self.client = FirestoreRESTClient()
 
-                self.durum_guncelle("⏳ [2/3] Güvenli oturum açılıyor...", "#2980b9")
-                self.client = FirestoreRESTClient(key_path)
+                self.durum_guncelle("⏳ [2/2] Veriler indiriliyor...", "#2980b9")
+                self.tum_stoklar = self.client.get_all("stoklar")
+
+                self.root.after(0, self.stok_listele)
+                toplam = len(self.tum_stoklar)
+                self.durum_guncelle(f"✅ Başarılı! Toplam {toplam} parça listelendi.", "#27ae60")
+
+            except Exception as e:
+                err_msg = str(e)
+                self.durum_guncelle("❌ Bağlantı hatası!", "red")
+                self.root.after(0, lambda: messagebox.showerror("Veri Hatası", f"Hata Detayı:\n\n{err_msg}"))
+
+        threading.Thread(target=arkaplan_islem, daemon=True).start()
 
                 # REST API üzerinden verileri doğrudan çek
                 self.tum_stoklar = self.client.get_all("stoklar")
