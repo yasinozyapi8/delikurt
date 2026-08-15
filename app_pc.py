@@ -76,10 +76,13 @@ def build_firestore_fields(data):
 
 class FirestoreRESTClient:
     def __init__(self):
-        # Key verisini kopyala ve private_key içindeki \n karakterlerini düzelt
-        self.key_data = dict(FIREBASE_KEY_DATA)
-        if isinstance(self.key_data.get("private_key"), str):
-            self.key_data["private_key"] = self.key_data["private_key"].replace("\\n", "\n")
+        # Önbellek ve kaçış karakteri sorununu çözen taze dictionary yüklemesi
+        import copy
+        self.key_data = copy.deepcopy(FIREBASE_KEY_DATA)
+        
+        pk = self.key_data.get("private_key", "")
+        if "\\n" in pk:
+            self.key_data["private_key"] = pk.replace("\\n", "\n")
 
         self.project_id = self.key_data.get("project_id")
         self.creds = service_account.Credentials.from_service_account_info(
