@@ -11,15 +11,16 @@ from datetime import datetime
 import qrcode
 from PIL import Image, ImageTk
 
-# Google OAuth Kütüphaneleri (Firebase-admin içinden gelir)
+# Google OAuth Kütüphaneleri
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
 
 def dosya_yolu(goreceli_yol):
+    """Önce .exe'nin yanındaki Dış Dosyayı okur, yoksa gömülü dosyaya bakar."""
     olasi_yollar = [
-        getattr(sys, '_MEIPASS', None),
         os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else None,
-        os.path.abspath(".")
+        os.path.abspath("."),
+        getattr(sys, '_MEIPASS', None)
     ]
     for yol in olasi_yollar:
         if yol:
@@ -29,7 +30,7 @@ def dosya_yolu(goreceli_yol):
     return os.path.join(os.path.abspath("."), goreceli_yol)
 
 
-# --- FIRESTORE REST API YARDIMCISI (gRPC KİLİTLENMESİNİ ENGELLER) ---
+# --- FIRESTORE REST API YARDIMCISI ---
 def parse_firestore_fields(fields):
     data = {}
     for key, val_dict in fields.items():
@@ -133,19 +134,17 @@ class StokUygulamasi:
         os._exit(0)
 
     def baglantiyi_ve_verileri_baslat(self):
-        """Standard HTTPS REST üzerinden veri indirir."""
         def arkaplan_islem():
             try:
-                self.durum_guncelle("⏳ [1/3] Sertifika kontrolü yapılıyor...", "#2980b9")
+                self.durum_guncelle("⏳ [1/3] Yeni sertifika kontrol ediliyor...", "#2980b9")
                 key_path = dosya_yolu("firebase_key.json")
                 if not os.path.exists(key_path):
                     self.durum_guncelle("❌ firebase_key.json bulunamadı!", "red")
                     self.root.after(0, lambda: messagebox.showerror("Hata", f"Anahtar dosyası bulunamadı:\n{key_path}"))
                     return
 
-                self.durum_guncelle("⏳ [2/3] HTTPS Güvenli İstek Gönderiliyor...", "#2980b9")
-                if not self.client:
-                    self.client = FirestoreRESTClient(key_path)
+                self.durum_guncelle("⏳ [2/3] Güvenli oturum açılıyor...", "#2980b9")
+                self.client = FirestoreRESTClient(key_path)
 
                 # REST API üzerinden verileri doğrudan çek
                 self.tum_stoklar = self.client.get_all("stoklar")
@@ -161,8 +160,8 @@ class StokUygulamasi:
 
             except Exception as e:
                 err_msg = str(e)
-                self.durum_guncelle("❌ Bağlantı hatası!", "red")
-                self.root.after(0, lambda: messagebox.showerror("Veri Hatası", f"Detaylı Hata:\n\n{err_msg}"))
+                self.durum_guncelle("❌ İmza / Bağlantı Hatası!", "red")
+                self.root.after(0, lambda: messagebox.showerror("Veri Hatası", f"Hata Detayı:\n\n{err_msg}\n\nİpucu: Windows saatini 'Şimdi Senkronize Et' ile güncellediğinizden emin olun."))
 
         threading.Thread(target=arkaplan_islem, daemon=True).start()
 
