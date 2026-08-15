@@ -3,8 +3,6 @@ import sys
 import json
 import threading
 import requests
-from google.oauth2 import service_account
-from google.auth.transport.requests import Request
 
 from kivy.app import App
 from kivy.core.window import Window
@@ -24,47 +22,22 @@ from kivy.graphics import PushMatrix, PopMatrix, Rotate
 Window.clearcolor = (0.12, 0.15, 0.18, 1)
 Window.softinput_mode = 'below_target'
 
-# 🔥 GÖMÜLÜ FIREBASE SERTİFİKASI & REST YAPILANDIRMASI
-FIREBASE_KEY_DATA = {
-  "type": "service_account",
-  "project_id": "stok-takip-f061b",
-  "private_key_id": "8928e7742589176999fe7310c4b1da525b8e06b5",
-  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCa0Y4ZSSiRo9iV\nnwPqvYZYhdR5U/lOo/a9Ls4yk8RQ3+0A9XyEDSaJifP6UWOFpoe8giig0Enwlkfz\n3tRXiNv2L18Vk8mh1MrstM/pMijRcLWHuvj3sUqwr59LFCZmcUOdoCOorWjSbyv7\nt/VM4YGmpjba+4Zd2ccLZuT2Wu9I/TUcjhVKXHo9SK+hb5dfXBhGOm/ndXmeB9Es\n/wNoZPMWjuoncCRF2DmUwW7oZiCp8TC1Uy6G9sGHqc5887ZBuCYD32fBg98lrxAC\nex4UIBcXKGIUyn5NvXDb4g5K7Sg0JNc/sJy1IvdgBN2hFGN4pxFmT+u6omIjBBmS\n5KAei2mDAgMBAAECggEAD0qNV3ADYsclGDoZf/DyOQIW51jk8eB9+VeLJDG2HSrQ\n1NxqTPyjhsgqYdnyE3xMQdE1RBTuiKW/O5YRsQeieiFZqd7r9mD3HgQJ2QWMRIt2\nUo6kEorfTq459Idr94hOXl43x2xBQy+Zz4Xu44YOcTBPkLdxIQnmf/jMuoxmv/Wj\nGNrotpd24O0DdusQwhR7ZmZWlUuOkP5+JDeP+0OGGqzZNY8lUjs34Yt7Ca8sbjKc\nQELWa9XxunWuORBtzluxXo7S2cBBTGVL34Rf6TrgoXADwtfU9FADKYkz6Wgvgnqx\n/WE2r8FphLJYLp5ve3WadX/fOdNSxhvyJ8bC+iadSQKBgQDK5YqC7Z2du8/yPt8U\nKnYBo3Jhx7uwvOGsmAEYeggsFgzwVpcIpT+bQ7DwX5Q9gWIxsnsCLPR6TQXs99vr\nE2rLMHFRGkINoLSy3BrlUnLUjbQDwiKmLD0izdWGXML3T5I0KzVRYkeYQzcrhOKg\nk18U84+cuuB+3IVYCtklk0D6fQKBgQDDVrE/fNAL6NEx+lULNaQF1Q73jlakHeTN\ngb5GkqDn0deGUSFylJdtcY8vlp00I8+kDcGkl9lSpIkyry/OE4whMXg8hLoLjS49\ny4WydtGwoOvMWoCeqR2ck8nz1cyAwV292gwoOvMWoCeqR2ck8nz1cyAwV292gUy2Bfe2eRmz3wR1uHLha6Z/ue2XsoL\n7xKvs4cz/wKBgCH/0PQbqTvTSwdG7c7NRrUDlJk6BQOawx5O4nAdkt0AXO6xM+Ho\n/v2fnDjLa2XbFn9Jbz9wFQ+hdIq/BgUgXdbqqTJz+fmaom0OYRtoc4GWtUGj+HZs\nF1qLr2oyhSE4HkHLs8WNeH3VVZtfSzKpP1edcMVMs23OujGEr9qSEGNpAoGAMKVp\nVNc/dIfReTHPdhAwvecWaB5Bg3OSZH94JFklyzWeB+wyeTd6Ep5iO0a19aMpdcCb\nReMvEv640C+Cpz6E+ks4l1Gyh2fsaSVDMXOXuvYIYwby2xBguHqxo5DN8g61yq79\n9nCMWUpIMDZhvouWBbpQBjfN+sPWa2xpaeo6tH8CgYBX+uTVazbmmXzuL4LeYz1H\nJhl1BOC/nRc7abYkXbK/hoAcPLZCYNUkEyVaXseMfTRmciooZs21sFiTRNfANdJ/\n+DTYJ0PZ01qBElyjXcbJ2mneTOy0CBa5mPfWuHikIl9nJSYEnKPm8SlQ8ZxuyTns\n9+N7K41+VeXb5U44XVaF5w==\n-----END PRIVATE KEY-----\n",
-  "client_email": "firebase-adminsdk-fbsvc@stok-takip-f061b.iam.gserviceaccount.com",
-  "client_id": "117747810902719699886",
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40stok-takip-f061b.iam.gserviceaccount.com",
-  "universe_domain": "googleapis.com"
-}
-
-PROJECT_ID = FIREBASE_KEY_DATA["project_id"]
+# 🔥 FIREBASE WEB API KEY YAPILANDIRMASI (RSA / SERTİFİKA / OAUTH YOK)
+PROJECT_ID = "stok-takip-f061b"
+API_KEY = "AIzaSyCxg29J4To7hVgXxHOhAY76oOwDcZqyvRY"  # Masaüstünde kullandığınız AIzaSy... key'ini yazın
 BASE_URL = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/stoklar"
 
 VERITABANI = []
 VERI_KILIDI = threading.Lock()
-CREDS = None
-
-def get_auth_header():
-    global CREDS
-    if not CREDS:
-        CREDS = service_account.Credentials.from_service_account_info(
-            FIREBASE_KEY_DATA,
-            scopes=['https://www.googleapis.com/auth/cloud-platform']
-        )
-    if not CREDS.valid:
-        CREDS.refresh(Request())
-    return {"Authorization": f"Bearer {CREDS.token}"}
 
 
-# --- FIREBASE ARKA PLAN İŞLEMLERİ ---
+# --- FIREBASE ARKA PLAN REST İŞLEMLERİ ---
 def REST_verileri_cek_async(on_success_callback=None):
     def run():
         global VERITABANI
         try:
-            headers = get_auth_header()
-            res = requests.get(f"{BASE_URL}?pageSize=300", headers=headers, timeout=6)
+            url = f"{BASE_URL}?key={API_KEY}&pageSize=300"
+            res = requests.get(url, timeout=6)
             if res.status_code == 200:
                 data = res.json()
                 yeni_liste = []
@@ -106,11 +79,10 @@ def REST_verileri_cek_async(on_success_callback=None):
 
 def REST_stok_guncelle_async(doc_id, yeni_stok, callback=None):
     def run():
-        url = f"{BASE_URL}/{doc_id}?updateMask.fieldPaths=miktar"
+        url = f"{BASE_URL}/{doc_id}?key={API_KEY}&updateMask.fieldPaths=miktar"
         payload = {"fields": {"miktar": {"integerValue": int(yeni_stok)}}}
         try:
-            headers = get_auth_header()
-            requests.patch(url, json=payload, headers=headers, timeout=6)
+            requests.patch(url, json=payload, timeout=6)
             REST_verileri_cek_async(callback)
         except Exception as e:
             print("Stok Güncelleme Hatası:", e)
@@ -119,7 +91,7 @@ def REST_stok_guncelle_async(doc_id, yeni_stok, callback=None):
 
 def REST_parca_ekle_veya_guncelle_async(doc_id, p_data, callback=None):
     def run():
-        url = f"{BASE_URL}/{doc_id}"
+        url = f"{BASE_URL}/{doc_id}?key={API_KEY}"
         payload = {
             "fields": {
                 "parca_kodu": {"stringValue": str(p_data.get("parca_kodu", "-"))},
@@ -132,8 +104,7 @@ def REST_parca_ekle_veya_guncelle_async(doc_id, p_data, callback=None):
             }
         }
         try:
-            headers = get_auth_header()
-            requests.patch(url, json=payload, headers=headers, timeout=6)
+            requests.patch(url, json=payload, timeout=6)
             REST_verileri_cek_async(callback)
         except Exception as e:
             print("Parça Kayıt Hatası:", e)
@@ -142,10 +113,9 @@ def REST_parca_ekle_veya_guncelle_async(doc_id, p_data, callback=None):
 
 def REST_parca_sil_async(doc_id, callback=None):
     def run():
-        url = f"{BASE_URL}/{doc_id}"
+        url = f"{BASE_URL}/{doc_id}?key={API_KEY}"
         try:
-            headers = get_auth_header()
-            requests.delete(url, headers=headers, timeout=6)
+            requests.delete(url, timeout=6)
             REST_verileri_cek_async(callback)
         except Exception as e:
             print("Silme Hatası:", e)
