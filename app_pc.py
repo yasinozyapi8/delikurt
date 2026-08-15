@@ -103,13 +103,15 @@ def build_firestore_fields(data):
 
 class FirestoreRESTClient:
     def __init__(self):
-        # Önbellek ve kaçış karakteri sorununu çözen taze dictionary yüklemesi
-        import copy
-        self.key_data = copy.deepcopy(FIREBASE_KEY_DATA)
-        
-        pk = self.key_data.get("private_key", "")
-        if "\\n" in pk:
-            self.key_data["private_key"] = pk.replace("\\n", "\n")
+        # Python string bozulmasını önlemek için taze firebase_key.json doğrudan çekilir
+        key_url = "https://raw.githubusercontent.com/yasinozyapi8/delikurt/refs/heads/main/firebase_key.json?v=5"
+        try:
+            req = urllib.request.Request(key_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                self.key_data = json.loads(resp.read().decode('utf-8'))
+        except Exception as e:
+            # İnternet/URL çekilemezse koddaki yedek sözlük devreye girer
+            self.key_data = FIREBASE_KEY_DATA
 
         self.project_id = self.key_data.get("project_id")
         self.creds = service_account.Credentials.from_service_account_info(
@@ -151,7 +153,6 @@ class FirestoreRESTClient:
         req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"}, method="DELETE")
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status == 200
-
 
 # --- MASAÜSTÜ ARAYÜZ SINIFI ---
 class StokUygulamasi:
