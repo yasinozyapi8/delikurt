@@ -1,6 +1,9 @@
 import os
 import sys
+import json
 import threading
+import urllib.request
+import urllib.parse
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import pandas as pd
@@ -8,12 +11,9 @@ from datetime import datetime
 import qrcode
 from PIL import Image, ImageTk
 
-# PyInstaller / Windows gRPC Çakışma Önleyici
-os.environ["GRPC_DNS_RESOLVER"] = "native"
-
-# Firebase Kütüphaneleri
-import firebase_admin
-from firebase_admin import credentials, firestore
+# Google OAuth Kütüphaneleri (Firebase-admin içinden gelir)
+from google.oauth2 import service_account
+from google.auth.transport.requests import Request
 
 def dosya_yolu(goreceli_yol):
     olasi_yollar = [
@@ -29,6 +29,82 @@ def dosya_yolu(goreceli_yol):
     return os.path.join(os.path.abspath("."), goreceli_yol)
 
 
+# --- FIRESTORE REST API YARDIMCISI (gRPC KİLİTLENMESİNİ ENGELLER) ---
+def parse_firestore_fields(fields):
+    data = {}
+    for key, val_dict in fields.items():
+        if "stringValue" in val_dict:
+            data[key] = str(val_dict["stringValue"])
+        elif "integerValue" in val_dict:
+            data[key] = int(val_dict["integerValue"])
+        elif "doubleValue" in val_dict:
+            data[key] = float(val_dict["doubleValue"])
+        elif "booleanValue" in val_dict:
+            data[key] = bool(val_dict["booleanValue"])
+        else:
+            data[key] = list(val_dict.values())[0] if val_dict else ""
+    return data
+
+def build_firestore_fields(data):
+    fields = {}
+    for key, val in data.items():
+        if isinstance(val, int):
+            fields[key] = {"integerValue": str(val)}
+        elif isinstance(val, float):
+            fields[key] = {"doubleValue": val}
+        elif isinstance(val, bool):
+            fields[key] = {"booleanValue": val}
+        else:
+            fields[key] = {"stringValue": str(val)}
+    return fields
+
+
+class FirestoreRESTClient:
+    def __init__(self, key_path):
+        with open(key_path, "r", encoding="utf-8") as f:
+            self.key_data = json.load(f)
+        self.project_id = self.key_data.get("project_id")
+        self.creds = service_account.Credentials.from_service_account_file(
+            key_path,
+            scopes=['https://www.googleapis.com/auth/cloud-platform']
+        )
+
+    def _get_token(self):
+        if not self.creds.valid:
+            self.creds.refresh(Request())
+        return self.creds.token
+
+    def get_all(self, collection_name="stoklar"):
+        token = self._get_token()
+        url = f"https://firestore.googleapis.com/v1/projects/{self.project_id}/databases/(default)/documents/{collection_name}?pageSize=300"
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            res_data = json.loads(resp.read().decode("utf-8"))
+        
+        docs = res_data.get("documents", [])
+        result = []
+        for doc in docs:
+            fields = doc.get("fields", {})
+            parsed = parse_firestore_fields(fields)
+            result.append(parsed)
+        return result
+
+    def set_doc(self, collection_name, doc_id, data):
+        token = self._get_token()
+        url = f"https://firestore.googleapis.com/v1/projects/{self.project_id}/databases/(default)/documents/{collection_name}/{doc_id}"
+        body = json.dumps({"fields": build_firestore_fields(data)}).encode("utf-8")
+        req = urllib.request.Request(url, data=body, headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}, method="PATCH")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def delete_doc(self, collection_name, doc_id):
+        token = self._get_token()
+        url = f"https://firestore.googleapis.com/v1/projects/{self.project_id}/databases/(default)/documents/{collection_name}/{doc_id}"
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"}, method="DELETE")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status == 200
+
+
 class StokUygulamasi:
     def __init__(self, root):
         self.root = root
@@ -36,7 +112,6 @@ class StokUygulamasi:
         self.root.geometry("1100x690")
         self.root.configure(bg="#f4f6f9")
 
-        # Sağ üst X butonuna basıldığında süreci Görev Yöneticisi'nden tamamen kapat
         self.root.protocol("WM_DELETE_WINDOW", self.uygulamayi_kapat)
 
         try:
@@ -44,7 +119,7 @@ class StokUygulamasi:
         except Exception:
             pass
 
-        self.db = None
+        self.client = None
         self.tum_stoklar = []
         
         self.arayuz_olustur()
@@ -58,43 +133,36 @@ class StokUygulamasi:
         os._exit(0)
 
     def baglantiyi_ve_verileri_baslat(self):
-        """Adım adım durum bildirimi yaparak verileri çeker."""
+        """Standard HTTPS REST üzerinden veri indirir."""
         def arkaplan_islem():
             try:
-                self.durum_guncelle("⏳ [1/4] Firebase sertifika dosyası doğrulanıyor...", "#2980b9")
+                self.durum_guncelle("⏳ [1/3] Sertifika kontrolü yapılıyor...", "#2980b9")
                 key_path = dosya_yolu("firebase_key.json")
                 if not os.path.exists(key_path):
                     self.durum_guncelle("❌ firebase_key.json bulunamadı!", "red")
                     self.root.after(0, lambda: messagebox.showerror("Hata", f"Anahtar dosyası bulunamadı:\n{key_path}"))
                     return
 
-                self.durum_guncelle("⏳ [2/4] Firebase oturumu açılıyor...", "#2980b9")
-                if not firebase_admin._apps:
-                    cred = credentials.Certificate(key_path)
-                    firebase_admin.initialize_app(cred)
-                
-                self.db = firestore.client()
+                self.durum_guncelle("⏳ [2/3] HTTPS Güvenli İstek Gönderiliyor...", "#2980b9")
+                if not self.client:
+                    self.client = FirestoreRESTClient(key_path)
 
-                self.durum_guncelle("⏳ [3/4] 'stoklar' veritabanına bağlanılıyor...", "#2980b9")
-                # Firestore stream okuması ile verileri çekiyoruz
-                docs = list(self.db.collection("stoklar").stream())
+                # REST API üzerinden verileri doğrudan çek
+                self.tum_stoklar = self.client.get_all("stoklar")
 
-                self.durum_guncelle("⏳ [4/4] Veriler tabloya aktarılıyor...", "#2980b9")
-                self.tum_stoklar = [doc.to_dict() for doc in docs]
-
-                # Ana thread üzerinde tabloyu doldur
+                self.durum_guncelle("⏳ [3/3] Tablo dolduruluyor...", "#2980b9")
                 self.root.after(0, self.stok_listele)
                 
                 toplam = len(self.tum_stoklar)
                 if toplam == 0:
-                    self.durum_guncelle("ℹ️ Veritabanı bağlantısı kuruldu fakat 'stoklar' koleksiyonu boş.", "#e67e22")
+                    self.durum_guncelle("ℹ️ Bağlantı kuruldu fakat veritabanı boş.", "#e67e22")
                 else:
                     self.durum_guncelle(f"✅ Başarılı! Toplam {toplam} parça listelendi.", "#27ae60")
 
             except Exception as e:
                 err_msg = str(e)
-                self.durum_guncelle("❌ Bağlantı veya veri çekme hatası oluştu!", "red")
-                self.root.after(0, lambda: messagebox.showerror("Veri Çekme Hatası", f"Detaylı Hata:\n\n{err_msg}"))
+                self.durum_guncelle("❌ Bağlantı hatası!", "red")
+                self.root.after(0, lambda: messagebox.showerror("Veri Hatası", f"Detaylı Hata:\n\n{err_msg}"))
 
         threading.Thread(target=arkaplan_islem, daemon=True).start()
 
@@ -283,11 +351,11 @@ class StokUygulamasi:
                 return
 
             try:
-                self.db.collection("stoklar").document(parca_kodu).update({
-                    "parca_adi": yeni_ad,
-                    "kategori": yeni_kat,
-                    "kritik_seviye": yeni_kritik
-                })
+                mevcut_data["parca_adi"] = yeni_ad
+                mevcut_data["kategori"] = yeni_kat
+                mevcut_data["kritik_seviye"] = yeni_kritik
+
+                self.client.set_doc("stoklar", parca_kodu, mevcut_data)
                 messagebox.showinfo("Başarılı", "Güncellendi.")
                 pencere.destroy()
                 self.baglantiyi_ve_verileri_baslat()
@@ -305,7 +373,7 @@ class StokUygulamasi:
 
         if messagebox.askyesno("Silme Onayı", f"'{parca_adi}' silinecek, onaylıyor musunuz?"):
             try:
-                self.db.collection("stoklar").document(parca_kodu).delete()
+                self.client.delete_doc("stoklar", parca_kodu)
                 messagebox.showinfo("Başarılı", "Silindi.")
                 self.baglantiyi_ve_verileri_baslat()
             except Exception as e:
@@ -334,22 +402,18 @@ class StokUygulamasi:
                 messagebox.showerror("Hata", "Kodu ve Adı boş bırakmayın!")
                 return
             
-            barkod = entries["barkod"].get().strip() or kod
-            kat = entries["kat"].get().strip() or "Genel"
-            miktar = int(entries["miktar"].get().strip() or 0)
-            kritik = int(entries["kritik"].get().strip() or 5)
-            raf = entries["raf"].get().strip() or "Belirtilmedi"
+            data = {
+                "parca_kodu": kod,
+                "barkod_no": entries["barkod"].get().strip() or kod,
+                "parca_adi": ad,
+                "kategori": entries["kat"].get().strip() or "Genel",
+                "miktar": int(entries["miktar"].get().strip() or 0),
+                "kritik_seviye": int(entries["kritik"].get().strip() or 5),
+                "raf_konumu": entries["raf"].get().strip() or "Belirtilmedi"
+            }
 
             try:
-                self.db.collection("stoklar").document(kod).set({
-                    "parca_kodu": kod,
-                    "barkod_no": barkod,
-                    "parca_adi": ad,
-                    "kategori": kat,
-                    "miktar": miktar,
-                    "kritik_seviye": kritik,
-                    "raf_konumu": raf
-                })
+                self.client.set_doc("stoklar", kod, data)
                 messagebox.showinfo("Başarılı", "Kaydedildi.")
                 pencere.destroy()
                 self.baglantiyi_ve_verileri_baslat()
@@ -363,31 +427,30 @@ class StokUygulamasi:
         if not secili: return
         item_values = self.tablo.item(secili[0])["values"]
         parca_kodu = str(item_values[0])
-        mevcut_barkod = str(item_values[1])
-        parca_adi = str(item_values[2])
-        mevcut_raf = str(item_values[5])
+        mevcut_data = next((x for x in self.tum_stoklar if str(x.get("parca_kodu")) == parca_kodu), None)
+        if not mevcut_data: return
 
         pencere = tk.Toplevel(self.root)
         pencere.title("Barkod ve Raf Düzenle")
         pencere.geometry("380x250")
 
-        tk.Label(pencere, text=f"Parça: {parca_adi}\nKod: {parca_kodu}", font=("Arial", 9, "bold")).pack(pady=10)
+        tk.Label(pencere, text=f"Parça: {mevcut_data.get('parca_adi')}\nKod: {parca_kodu}", font=("Arial", 9, "bold")).pack(pady=10)
         tk.Label(pencere, text="Barkod / QR No:").pack()
         ent_barkod = tk.Entry(pencere, width=28)
-        ent_barkod.insert(0, mevcut_barkod)
+        ent_barkod.insert(0, mevcut_data.get("barkod_no", parca_kodu))
         ent_barkod.pack(pady=5)
 
         tk.Label(pencere, text="Raf Konumu:").pack(pady=(5, 0))
         ent_raf = tk.Entry(pencere, width=28)
-        ent_raf.insert(0, mevcut_raf if mevcut_raf != "Belirtilmedi" else "")
+        ent_raf.insert(0, mevcut_data.get("raf_konumu", ""))
         ent_raf.pack(pady=5)
 
         def kaydet():
             try:
-                self.db.collection("stoklar").document(parca_kodu).update({
-                    "barkod_no": ent_barkod.get().strip() or parca_kodu,
-                    "raf_konumu": ent_raf.get().strip() or "Belirtilmedi"
-                })
+                mevcut_data["barkod_no"] = ent_barkod.get().strip() or parca_kodu
+                mevcut_data["raf_konumu"] = ent_raf.get().strip() or "Belirtilmedi"
+
+                self.client.set_doc("stoklar", parca_kodu, mevcut_data)
                 messagebox.showinfo("Başarılı", "Güncellendi.")
                 pencere.destroy()
                 self.baglantiyi_ve_verileri_baslat()
@@ -401,8 +464,11 @@ class StokUygulamasi:
         if not secili: return
         item_values = self.tablo.item(secili[0])["values"]
         parca_kodu = str(item_values[0])
-        parca_adi = str(item_values[2])
-        mevcut_miktar = int(item_values[4])
+        mevcut_data = next((x for x in self.tum_stoklar if str(x.get("parca_kodu")) == parca_kodu), None)
+        if not mevcut_data: return
+
+        parca_adi = mevcut_data.get("parca_adi")
+        mevcut_miktar = int(mevcut_data.get("miktar", 0))
 
         pencere = tk.Toplevel(self.root)
         pencere.title(f"Stok {'Artır' if islem_tipi == 'arttir' else 'Azalt'}")
@@ -428,14 +494,19 @@ class StokUygulamasi:
             yeni_miktar = mevcut_miktar + m if islem_tipi == "arttir" else mevcut_miktar - m
 
             try:
-                self.db.collection("stoklar").document(parca_kodu).update({"miktar": yeni_miktar})
-                self.db.collection("stok_hareketleri").add({
+                mevcut_data["miktar"] = yeni_miktar
+                self.client.set_doc("stoklar", parca_kodu, mevcut_data)
+                
+                # Stok hareketi kaydı
+                hareket_id = datetime.now().strftime("%Y%m%d%H%M%S")
+                self.client.set_doc("stok_hareketleri", hareket_id, {
                     "parca_kodu": parca_kodu,
                     "islem_tipi": "GİRİŞ" if islem_tipi == "arttir" else "ÇIKIŞ",
                     "miktar": m,
                     "tarih": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "aciklama": "Masaüstü İşlemi"
                 })
+
                 messagebox.showinfo("Başarılı", "Stok güncellendi.")
                 pencere.destroy()
                 self.baglantiyi_ve_verileri_baslat()
@@ -452,7 +523,7 @@ class StokUygulamasi:
                 eklenen = 0
                 for _, row in df.iterrows():
                     kod = str(row['parca_kodu'])
-                    self.db.collection("stoklar").document(kod).set({
+                    data = {
                         "parca_kodu": kod,
                         "barkod_no": str(row.get('barkod_no', kod)),
                         "parca_adi": str(row['parca_adi']),
@@ -460,7 +531,8 @@ class StokUygulamasi:
                         "miktar": int(row.get('miktar', 0)),
                         "kritik_seviye": int(row.get('kritik_seviye', 5)),
                         "raf_konumu": str(row.get('raf_konumu', 'Belirtilmedi'))
-                    })
+                    }
+                    self.client.set_doc("stoklar", kod, data)
                     eklenen += 1
                 messagebox.showinfo("Başarılı", f"{eklenen} parça aktarıldı.")
                 self.baglantiyi_ve_verileri_baslat()
