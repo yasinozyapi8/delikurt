@@ -11,51 +11,9 @@ from datetime import datetime
 import qrcode
 from PIL import Image, ImageTk
 
-# Google OAuth Kütüphaneleri
-from google.oauth2 import service_account
-from google.auth.transport.requests import Request
-
-# --- TAZE GÖMÜLÜ FIREBASE SERTİFİKA BİLGİLERİ ---
-FIREBASE_KEY_DATA = {
-  "type": "service_account",
-  "project_id": "stok-takip-f061b",
-  "private_key_id": "1ad784c4dd44d58725ec87a1b4d89091652afdfa",
-  "private_key": """-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC+qyDZp7ZpJGqC
-UpnTXiN3ZUc58eEND2z9eyoN6hN9PSGMgOYUA6xT0xm0AonSJL6VdClvoiQr0GYB
-QlkgNuQIjRUx979OfdtPMPIUFvcnwW4hiGKt+G3XJqX/kil2SZrc6xVBugKsisHU
-1fri97pqj7LyhDxrwS9dH9gOKYSNaLHEpBk7NgSEgK343K2U3fZaQOravbqhijle
-VYfbeKNb8qJr2ew3KBnjFicEWVZWF6Tau2/DU6YxbhS1/Wn8yoN8EfpiuRWdvtkO
-TDWvlQy1tPnlvc6qhuc6oJJ3h2od2EgKcqD7SE9lMLqGho9Pz+JYfFxgUC4aCoew
-iMamLJ+5AgMBAAECggEAA32+rD2V6XbxPFGm32fp3lXMaBM1u7d8l2eZ7YdLtA9a
-fegeTl+C2EYVQmaJf3+Mvc/SsmiVoPe/5mYAm8ZlhoKO0MtohVdonJqY1CVXgTLZ
-gWOt6uGRoU7j2zoh6DiQzVrAmON/CQnBYtRIM7+1eh4HeMlTEeYHp/zdR+UauDwa
-aE9/WSzj5wbXRGgqUmD1Leq3atHQZIu2x2Zl1qa6y88WfRk+cgNXKx9VIZwC5bDX
-Nkfu49gKjTeUDxSlLMqkjwsokrT1oAtvRd/1y20ikAO7aqrPt7kGmJofdWo53xLx
-dFQ3T0ExT3VoIPG/QItu4mdmQ69NuEv8jPYrQ+nXwQKBgQDt1qpoq1em6RriLvaU
-n/t+06/9bNnVDEOyqINDGGNMg+QThaGRKmnHNQ+6AlKN5FjL4SsOk+zm2C9aGx8y
-6zaG9aKpA3JqqAXwiRS55n99KDJV1DnJ61uRZX9rvsD3k5vVhv0DEss6THyL0IIj
-RiPKSy6HSIiGgpJ/ndtrMI/GlwKBgQDNOl50r2Qb6waWMGt9G3A26ZMz7aCmyU5Z
-rC8Eicnv5wPT+sHW8Q5IxIgUD2+iiNdm0MlNmyY8hSn6CaaxpGPpZFygVY/7z/MU
-nUYPiwTsUiQKz1VuBPvoQjPpYWAzHbBjTwy740LvaTDbb6TOiRlxQpOpxKwMXsjq
-23vQxnFmLwKBgBs7iSeS9uZVqo5bckByUQmkk3IhFJAgZ1/9i4oTMMuCDottsaI9
-iP8WREa4HVvB2aj+jz+MEIQeHM3kbR4XcJbjaUyQ6Hjt5EA2cfkXO2HJSHorYrKM
-EGAFjyF3JgEzFZTNcAr6C+sQ9vHLXhtL3K09DobO91LvgHa8THNpjAzhAoGBAJrn
-ssIKXNrBxF/6vjdZTZL1LNnmQ/uAOPZwg7C+PEErMvV+8W7G1oxQY5IYsJ+TAFsn
-vrooIG1P6gZD4KF3Pr68tTmEO8DLDmSB7Y7v1NB3k6LhKk93zZha2AoRKOaMQ0ZC
-NY9gE3bYBDutgk0uqJiXsxNSUranmKnE7yj/kDqbAoGAWjYDOEUuYoFmqjpTHv1e
-vIHmVYqUyn4J0hwA8DbsdmEskaWWtQtA9cNELiGhPZmeoFq0p77a8uzKjsmJ4ns5
-2BOsJinm+v6SsC56OzI5qqpz7MAl5mutbhngeF4ljNCao9XTykJS+kZNIZoDkUG5
-eJGz65AZu92DCHwLG2z+C7Q=
------END PRIVATE KEY-----""",
-  "client_email": "firebase-adminsdk-fbsvc@stok-takip-f061b.iam.gserviceaccount.com",
-  "client_id": "117747810902719699886",
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40stok-takip-f061b.iam.gserviceaccount.com",
-  "universe_domain": "googleapis.com"
-}
+# --- FIREBASE WEB API KEY YAPILANDIRMASI (RSA / JWT İMZA YOK) ---
+PROJECT_ID = "stok-takip-f061b"
+API_KEY = "AIzaSyCxg29J4To7hVgXxHOhAY76oOwDcZqyvRY"  # Firebase'den aldığınız AIzaSy... metnini yapıştırın
 
 def dosya_yolu(goreceli_yol):
     olasi_yollar = [
@@ -103,31 +61,12 @@ def build_firestore_fields(data):
 
 class FirestoreRESTClient:
     def __init__(self):
-        # Python string bozulmasını önlemek için taze firebase_key.json doğrudan çekilir
-        key_url = "https://raw.githubusercontent.com/yasinozyapi8/delikurt/refs/heads/main/firebase_key.json?v=5"
-        try:
-            req = urllib.request.Request(key_url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                self.key_data = json.loads(resp.read().decode('utf-8'))
-        except Exception as e:
-            # İnternet/URL çekilemezse koddaki yedek sözlük devreye girer
-            self.key_data = FIREBASE_KEY_DATA
-
-        self.project_id = self.key_data.get("project_id")
-        self.creds = service_account.Credentials.from_service_account_info(
-            self.key_data,
-            scopes=['https://www.googleapis.com/auth/cloud-platform']
-        )
-
-    def _get_token(self):
-        if not self.creds.valid:
-            self.creds.refresh(Request())
-        return self.creds.token
+        self.project_id = PROJECT_ID
+        self.api_key = API_KEY
 
     def get_all(self, collection_name="stoklar"):
-        token = self._get_token()
-        url = f"https://firestore.googleapis.com/v1/projects/{self.project_id}/databases/(default)/documents/{collection_name}?pageSize=300"
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+        url = f"https://firestore.googleapis.com/v1/projects/{self.project_id}/databases/(default)/documents/{collection_name}?key={self.api_key}&pageSize=300"
+        req = urllib.request.Request(url, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             res_data = json.loads(resp.read().decode("utf-8"))
         
@@ -140,19 +79,18 @@ class FirestoreRESTClient:
         return result
 
     def set_doc(self, collection_name, doc_id, data):
-        token = self._get_token()
-        url = f"https://firestore.googleapis.com/v1/projects/{self.project_id}/databases/(default)/documents/{collection_name}/{doc_id}"
+        url = f"https://firestore.googleapis.com/v1/projects/{self.project_id}/databases/(default)/documents/{collection_name}/{doc_id}?key={self.api_key}"
         body = json.dumps({"fields": build_firestore_fields(data)}).encode("utf-8")
-        req = urllib.request.Request(url, data=body, headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}, method="PATCH")
+        req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="PATCH")
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
     def delete_doc(self, collection_name, doc_id):
-        token = self._get_token()
-        url = f"https://firestore.googleapis.com/v1/projects/{self.project_id}/databases/(default)/documents/{collection_name}/{doc_id}"
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"}, method="DELETE")
+        url = f"https://firestore.googleapis.com/v1/projects/{self.project_id}/databases/(default)/documents/{collection_name}/{doc_id}?key={self.api_key}"
+        req = urllib.request.Request(url, headers={"Content-Type": "application/json"}, method="DELETE")
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status == 200
+
 
 # --- MASAÜSTÜ ARAYÜZ SINIFI ---
 class StokUygulamasi:
@@ -185,7 +123,7 @@ class StokUygulamasi:
     def baglantiyi_ve_verileri_baslat(self):
         def arkaplan_islem():
             try:
-                self.durum_guncelle("⏳ [1/2] Güvenli oturum açılıyor...", "#2980b9")
+                self.durum_guncelle("⏳ [1/2] Veritabanı bağlantısı kuruluyor...", "#2980b9")
                 if not self.client:
                     self.client = FirestoreRESTClient()
 
