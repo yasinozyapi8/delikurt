@@ -8,7 +8,7 @@ from datetime import datetime
 import qrcode
 from PIL import Image, ImageTk
 
-# PyInstaller gRPC Windows Çakışma Önleyici
+# PyInstaller / Windows gRPC Çakışma Önleyici
 os.environ["GRPC_DNS_RESOLVER"] = "native"
 
 # Firebase Kütüphaneleri
@@ -47,10 +47,7 @@ class StokUygulamasi:
         self.db = None
         self.tum_stoklar = []
         
-        # 1. Arayüzü anında çiz
         self.arayuz_olustur()
-        
-        # 2. Arayüz dondurmasını önlemek için Firebase bağlantısını ve veriyi arka planda başlat
         self.baglantiyi_ve_verileri_baslat()
 
     def uygulamayi_kapat(self):
@@ -61,46 +58,47 @@ class StokUygulamasi:
         os._exit(0)
 
     def baglantiyi_ve_verileri_baslat(self):
-        """Arayüzün kilitlenmesini engellemek için tüm ağ işlemlerini arka plan thread'inde çalıştırır."""
+        """Adım adım durum bildirimi yaparak verileri çeker."""
         def arkaplan_islem():
-            self.durum_guncelle("⏳ Firebase veritabanına bağlanılıyor...", "#2980b9")
-            
             try:
+                self.durum_guncelle("⏳ [1/4] Firebase sertifika dosyası doğrulanıyor...", "#2980b9")
                 key_path = dosya_yolu("firebase_key.json")
                 if not os.path.exists(key_path):
-                    self.durum_guncelle("❌ firebase_key.json dosyası bulunamadı!", "red")
+                    self.durum_guncelle("❌ firebase_key.json bulunamadı!", "red")
                     self.root.after(0, lambda: messagebox.showerror("Hata", f"Anahtar dosyası bulunamadı:\n{key_path}"))
                     return
 
+                self.durum_guncelle("⏳ [2/4] Firebase oturumu açılıyor...", "#2980b9")
                 if not firebase_admin._apps:
                     cred = credentials.Certificate(key_path)
                     firebase_admin.initialize_app(cred)
                 
                 self.db = firestore.client()
-                self.durum_guncelle("⏳ Veriler indiriliyor...", "#2980b9")
 
-                # Firestore verilerini çek
-                docs = self.db.collection("stoklar").get(timeout=10)
+                self.durum_guncelle("⏳ [3/4] 'stoklar' veritabanına bağlanılıyor...", "#2980b9")
+                # Firestore stream okuması ile verileri çekiyoruz
+                docs = list(self.db.collection("stoklar").stream())
+
+                self.durum_guncelle("⏳ [4/4] Veriler tabloya aktarılıyor...", "#2980b9")
                 self.tum_stoklar = [doc.to_dict() for doc in docs]
 
-                # Ana thread üzerinde tabloyu güncelle
+                # Ana thread üzerinde tabloyu doldur
                 self.root.after(0, self.stok_listele)
                 
                 toplam = len(self.tum_stoklar)
                 if toplam == 0:
-                    self.durum_guncelle("ℹ️ Veritabanı bağlı fakat stok verisi boş.", "#e67e22")
+                    self.durum_guncelle("ℹ️ Veritabanı bağlantısı kuruldu fakat 'stoklar' koleksiyonu boş.", "#e67e22")
                 else:
-                    self.durum_guncelle(f"✅ Toplam {toplam} parça başarıyla yüklendi.", "#27ae60")
+                    self.durum_guncelle(f"✅ Başarılı! Toplam {toplam} parça listelendi.", "#27ae60")
 
             except Exception as e:
-                self.durum_guncelle("❌ Bağlantı veya veri çekme hatası!", "red")
                 err_msg = str(e)
-                self.root.after(0, lambda: messagebox.showerror("Veri Hatası", f"Veritabanı hatası:\n\n{err_msg}"))
+                self.durum_guncelle("❌ Bağlantı veya veri çekme hatası oluştu!", "red")
+                self.root.after(0, lambda: messagebox.showerror("Veri Çekme Hatası", f"Detaylı Hata:\n\n{err_msg}"))
 
         threading.Thread(target=arkaplan_islem, daemon=True).start()
 
     def durum_guncelle(self, metin, renk="#333333"):
-        """Durum çubuğunu güvenli şekilde günceller."""
         def guncelle():
             self.lbl_durum.config(text=metin, fg=renk)
         self.root.after(0, guncelle)
@@ -163,7 +161,7 @@ class StokUygulamasi:
 
         durum_bar = tk.Frame(self.root, bg="#e2e8f0", pady=3, padx=10)
         durum_bar.pack(fill="x", side="bottom")
-        self.lbl_durum = tk.Label(durum_bar, text="Başlatılıyor...", font=("Arial", 9), bg="#e2e8f0", fg="#333333", anchor="w")
+        self.lbl_durum = tk.Label(durum_bar, text="Sistem Başlatılıyor...", font=("Arial", 9), bg="#e2e8f0", fg="#333333", anchor="w")
         self.lbl_durum.pack(fill="x")
 
     def sag_tik_menusu_goster(self, event):
