@@ -22,9 +22,9 @@ from kivy.graphics import PushMatrix, PopMatrix, Rotate
 Window.clearcolor = (0.12, 0.15, 0.18, 1)
 Window.softinput_mode = 'below_target'
 
-# 🔥 FIREBASE WEB API KEY YAPILANDIRMASI (RSA / SERTİFİKA / OAUTH YOK)
+# 🔥 FIREBASE WEB API KEY YAPILANDIRMASI
 PROJECT_ID = "stok-takip-f061b"
-API_KEY = "AIzaSyCxg29J4To7hVgXxHOhAY76oOwDcZqyvRY"  # Masaüstünde kullandığınız AIzaSy... key'ini yazın
+API_KEY = "AIzaSyCxg29J4To7hVgXxHOhAY76oOwDcZqyvRY"  # AIzaSy... key'inizi yazın
 BASE_URL = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/stoklar"
 
 VERITABANI = []
