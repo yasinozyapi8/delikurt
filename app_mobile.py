@@ -3,7 +3,6 @@ import sys
 import json
 import threading
 import requests
-import io
 
 from kivy.app import App
 from kivy.core.window import Window
@@ -18,18 +17,15 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 from kivy.uix.camera import Camera
-from kivy.uix.image import Image
+from kivy.uix.image import AsyncImage
 from kivy.graphics import PushMatrix, PopMatrix, Rotate, Color, Line
-from kivy.core.image import Image as CoreImage
-
-import qrcode
 
 Window.clearcolor = (0.12, 0.15, 0.18, 1)
 Window.softinput_mode = 'below_target'
 
 # 🔥 FIREBASE WEB API KEY YAPILANDIRMASI
 PROJECT_ID = "stok-takip-f061b"
-API_KEY = "AIzaSyCxg29J4To7hVgXxHOhAY76oOwDcZqyvRY"  # Masaüstündeki AIzaSy... key'inizi yapıştırın
+API_KEY = "AIzaSyCxg29J4To7hVgXxHOhAY76oOwDcZqyvRY"
 BASE_URL = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/stoklar"
 
 VERITABANI = []
@@ -324,7 +320,7 @@ class AnaEkran(Screen):
         scroll_view.add_widget(content)
         main_popup_box.add_widget(scroll_view)
 
-        # 🖨️ QR Kod Göster Butonu
+        # 🖨️ QR Kod Göster (Sertifikasız, Harici Kütüphanesiz Web API)
         btn_qr_goster = Button(text='🖨️ QR Kod Göster', size_hint_y=0.10, background_color=(0.9, 0.5, 0.1, 1), background_normal='', bold=True)
         btn_qr_goster.bind(on_release=lambda x: self.qr_popup_goster(str(txt_barkod.text or txt_parca_kodu.text), txt_ad.text))
         main_popup_box.add_widget(btn_qr_goster)
@@ -366,21 +362,11 @@ class AnaEkran(Screen):
         popup.open()
 
     def qr_popup_goster(self, barkod_metni, parca_adi):
-        qr = qrcode.QRCode(version=1, box_size=8, border=2)
-        qr.add_data(barkod_metni)
-        qr.make(fit=True)
-        img = qr.make_image(fill_color="black", back_color="white")
-
-        buffer = io.BytesIO()
-        img.save(buffer, format='PNG')
-        buffer.seek(0)
-
-        core_img = CoreImage(buffer, ext='png')
-        kivy_img = Image(texture=core_img.texture)
-
+        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={barkod_metni}"
+        
         box = BoxLayout(orientation='vertical', padding=10, spacing=10)
         box.add_widget(Label(text=f"{parca_adi}\nBarkod: {barkod_metni}", font_size='15sp', bold=True, size_hint_y=0.2, halign='center'))
-        box.add_widget(kivy_img)
+        box.add_widget(AsyncImage(source=qr_url))
 
         qr_popup = Popup(title='QR Etiket', content=box, size_hint=(0.85, 0.65))
         qr_popup.open()
@@ -468,10 +454,9 @@ class BarkodVizoru(BoxLayout):
     def _ciz(self, *args):
         self.canvas.before.clear()
         with self.canvas.before:
-            Color(0, 1, 0, 0.8)  # Vizör çerçeve rengi (Yeşil)
+            Color(0, 1, 0, 0.8)
             w, h = self.size
             x, y = self.pos
-            # Çerçeve hatları
             Line(rectangle=(x + w*0.1, y + h*0.25, w*0.8, h*0.5), width=2)
 
 
@@ -484,7 +469,6 @@ class KameraEkrani(Screen):
         self.cam_container = BoxLayout(size_hint=(1, 0.70))
         self.layout.add_widget(self.cam_container)
 
-        # Barkod Manuel Giriş & Okuma Simülasyon Kutusu
         scan_box = BoxLayout(orientation='horizontal', size_hint_y=0.10, spacing=6)
         self.txt_manual_scan = TextInput(hint_text='Okunan Barkodu Yazın / Tarayın...', multiline=False, size_hint_x=0.7, font_size='15sp')
         btn_process_scan = Button(text='Tarat', size_hint_x=0.3, background_color=(0.1, 0.6, 0.3, 1), background_normal='', bold=True)
@@ -520,7 +504,6 @@ class KameraEkrani(Screen):
 
                 self.camera.bind(pos=self._rotation_merkezini_guncelle, size=self._rotation_merkezini_guncelle)
                 
-                # Kamera kabına Vizör çerçevesini ekleme
                 vizor_box = BoxLayout(size_hint=(1, 1))
                 vizor_box.add_widget(self.camera)
                 vizor_box.add_widget(BarkodVizoru())
@@ -539,7 +522,6 @@ class KameraEkrani(Screen):
     def barkod_isle(self, okunan_barkod):
         if not okunan_barkod: return
 
-        # Veritabanında parçayı arama
         bulunan_item = None
         with VERI_KILIDI:
             for item in VERITABANI:
@@ -548,10 +530,8 @@ class KameraEkrani(Screen):
                     break
 
         if bulunan_item:
-            # 1. SENARYO: Parça Kod/Barkod Veritabanında VAR -> Hızlı Stok İşlem Pop-up'ı
             self.hizli_stok_popup_ac(bulunan_item)
         else:
-            # 2. SENARYO: Parça Kod/Barkod Veritabanında YOK -> Yeni Parça Ekle Ekranına Yönlendir & Barkodu Doldur
             ekle_ekrani = self.manager.get_screen('ekle_ekrani')
             ekle_ekrani.otomatık_barkod_doldur(okunan_barkod)
             self.manager.current = 'ekle_ekrani'
