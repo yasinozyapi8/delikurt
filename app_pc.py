@@ -28,6 +28,7 @@ def dosya_yolu(goreceli_yol):
 # --- FIREBASE BAĞLANTISI ---
 FIREBASE_AKTIF = False
 db = None
+FIREBASE_HATA = ""
 
 try:
     key_path = dosya_yolu("firebase_key.json")
@@ -38,9 +39,9 @@ try:
         db = firestore.client()
         FIREBASE_AKTIF = True
     else:
-        print("⚠️ firebase_key.json bulunamadı!")
+        FIREBASE_HATA = f"firebase_key.json dosyası bulunamadı!\nAranan Yol: {key_path}"
 except Exception as e:
-    print("❌ Firebase hatası:", e)
+    FIREBASE_HATA = f"Firebase Bağlantı Hatası: {e}"
 
 
 class StokUygulamasi:
@@ -61,10 +62,9 @@ class StokUygulamasi:
         self.arayuz_olustur()
         
         if FIREBASE_AKTIF:
-            # Arayüz açılışını dondurmamak için veri yüklemeyi arka planda başlat
             self.root.after(100, self.verileri_arkaplanda_yukle)
         else:
-            messagebox.showerror("Hata", f"Firebase anahtar dosyası bulunamadı!\nAranan Yol: {dosya_yolu('firebase_key.json')}")
+            messagebox.showerror("Firebase Hatası", FIREBASE_HATA)
 
     def uygulamayi_kapat(self):
         try:
@@ -74,16 +74,20 @@ class StokUygulamasi:
         os._exit(0)
 
     def verileri_arkaplanda_yukle(self):
-        """Arayüzü dondurmamak için Firebase veri çekme işlemini ayrı iş parçacığında çalıştırır."""
+        """Arayüzü dondurmadan verileri çeker. Hata oluşursa ekrana mesaj kutusu basar."""
         def hedef():
             try:
                 docs = db.collection("stoklar").stream()
                 self.tum_stoklar = [doc.to_dict() for doc in docs]
+                
+                if not self.tum_stoklar:
+                    self.root.after(0, lambda: messagebox.showinfo("Bilgi", "Firebase 'stoklar' koleksiyonunda henüz kayıtlı veri yok."))
+                
                 self.root.after(0, self.stok_listele)
-                # İlk yükleme tamamlanınca canlı dinleyiciyi aç
                 self.canli_dinleyici_baslat()
             except Exception as e:
-                print("Veri yükleme hatası:", e)
+                hata_mesaji = str(e)
+                self.root.after(0, lambda: messagebox.showerror("Veri Çekme Hatası", f"Veritabanından veriler alınamadı:\n\n{hata_mesaji}"))
 
         threading.Thread(target=hedef, daemon=True).start()
 
