@@ -12,11 +12,18 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 def dosya_yolu(goreceli_yol):
-    try:
-        taban_yol = sys._MEIPASS
-    except Exception:
-        taban_yol = os.path.abspath(".")
-    return os.path.join(taban_yol, goreceli_yol)
+    """Hem PyInstaller tek dosya (.exe) içinde hem de normal .py çalışmasında dosyayı bulur."""
+    olasi_yollar = [
+        getattr(sys, '_MEIPASS', None),
+        os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else None,
+        os.path.abspath(".")
+    ]
+    for yol in olasi_yollar:
+        if yol:
+            tam_yol = os.path.join(yol, goreceli_yol)
+            if os.path.exists(tam_yol):
+                return tam_yol
+    return os.path.join(os.path.abspath("."), goreceli_yol)
 
 # --- FIREBASE BAĞLANTISI ---
 FIREBASE_AKTIF = False
@@ -25,8 +32,9 @@ db = None
 try:
     key_path = dosya_yolu("firebase_key.json")
     if os.path.exists(key_path):
-        cred = credentials.Certificate(key_path)
-        firebase_admin.initialize_app(cred)
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(key_path)
+            firebase_admin.initialize_app(cred)
         db = firestore.client()
         FIREBASE_AKTIF = True
         print("✅ Firebase bağlantısı başarılı!")
@@ -44,6 +52,9 @@ class StokUygulamasi:
         self.root.geometry("1100x670")
         self.root.configure(bg="#f4f6f9")
 
+        # ❌ X Butonuna basıldığında süreci Görev Yöneticisi'nden tamamen kapat
+        self.root.protocol("WM_DELETE_WINDOW", self.uygulamayi_kapat)
+
         try:
             self.root.iconbitmap(dosya_yolu("app.ico"))
         except Exception:
@@ -53,9 +64,29 @@ class StokUygulamasi:
         self.arayuz_olustur()
         
         if FIREBASE_AKTIF:
+            # İlk açılışta verileri anında çek
+            self.verileri_ilk_yukle()
+            # Canlı dinleyiciyi başlat
             self.canli_dinleyici_baslat()
         else:
-            messagebox.showerror("Hata", "Firebase anahtar dosyası bulunamadı!")
+            messagebox.showerror("Hata", f"Firebase anahtar dosyası okunamadı!\nAranan Yol: {dosya_yolu('firebase_key.json')}")
+
+    def uygulamayi_kapat(self):
+        """Pencere kapatıldığında arka plan süreçlerini ve canlı dinleyiciyi öldürür."""
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
+        os._exit(0)
+
+    def verileri_ilk_yukle(self):
+        """Firebase'den verileri doğrudan çekip tabloya basar."""
+        try:
+            docs = db.collection("stoklar").stream()
+            self.tum_stoklar = [doc.to_dict() for doc in docs]
+            self.stok_listele()
+        except Exception as e:
+            print("Veri yükleme hatası:", e)
 
     def arayuz_olustur(self):
         baslik_frame = tk.Frame(self.root, bg="#2c3e50", pady=10)
@@ -111,17 +142,22 @@ class StokUygulamasi:
         tk.Button(alt_bar, text="➖ Stok Azalt", bg="#c0392b", fg="white", font=("Arial", 10, "bold"), command=lambda: self.stok_islem_penceresi("azalt")).pack(side="left", padx=5)
         tk.Button(alt_bar, text="✏️ Düzenle", bg="#2980b9", fg="white", font=("Arial", 10, "bold"), command=self.parca_duzenle_penceresi).pack(side="left", padx=5)
         
-        # QR Kod Etiket Basma Butonu
         tk.Button(alt_bar, text="🖨️ QR Etiket Yazdır", bg="#e67e22", fg="white", font=("Arial", 10, "bold"), command=self.qr_etiket_penceresi).pack(side="left", padx=10)
 
-        tk.Button(alt_bar, text="🔄 Yenile", bg="#7f8c8d", fg="white", font=("Arial", 10), command=self.stok_listele).pack(side="right", padx=5)
+        tk.Button(alt_bar, text="🔄 Yenile", bg="#7f8c8d", fg="white", font=("Arial", 10), command=self.verileri_ilk_yukle).pack(side="right", padx=5)
 
     def canli_dinleyici_baslat(self):
         def on_snapshot(col_snapshot, changes, read_time):
             self.tum_stoklar = [doc.to_dict() for doc in col_snapshot]
-            self.root.after(0, self.stok_listele)
+            try:
+                self.root.after(0, self.stok_listele)
+            except Exception:
+                pass
 
-        db.collection("stoklar").on_snapshot(on_snapshot)
+        try:
+            db.collection("stoklar").on_snapshot(on_snapshot)
+        except Exception as e:
+            print("Canlı dinleyici hatası:", e)
 
     def sag_tik_menusu_goster(self, event):
         row_id = self.tablo.identify_row(event.y)
