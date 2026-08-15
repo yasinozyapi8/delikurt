@@ -10,25 +10,28 @@ import pandas as pd
 from datetime import datetime
 import qrcode
 from PIL import Image, ImageTk
-FIREBASE_KEY_DATA = {
-  "type": "service_account",
-  "project_id": "stok-takip-f061b",
-  "private_key_id": "BURAYA_JSON_ICINDEKI_PRIVATE_KEY_ID",
-  "private_key": "-----BEGIN PRIVATE KEY-----\nBURAYA_JSON_ICINDEKI_PRIVATE_KEY\n-----END PRIVATE KEY-----\n",
-  "client_email": "BURAYA_JSON_ICINDEKI_CLIENT_EMAIL",
-  "client_id": "BURAYA_JSON_ICINDEKI_CLIENT_ID",
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": "BURAYA_JSON_ICINDEKI_CLIENT_CERT_URL"
-}
 
 # Google OAuth Kütüphaneleri
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
 
+# --- GÖMÜLÜ FIREBASE SERTİFİKA BİLGİLERİ ---
+FIREBASE_KEY_DATA = {
+  "type": "service_account",
+  "project_id": "stok-takip-f061b",
+  "private_key_id": "8928e7742589176999fe7310c4b1da525b8e06b5",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCa0Y4ZSSiRo9iV\nnwPqvYZYhdR5U/lOo/a9Ls4yk8RQ3+0A9XyEDSaJifP6UWOFpoe8giig0Enwlkfz\n3tRXiNv2L18Vk8mh1MrstM/pMijRcLWHuvj3sUqwr59LFCZmcUOdoCOorWjSbyv7\nt/VM4YGmpjba+4Zd2ccLZuT2Wu9I/TUcjhVKXHo9SK+hb5dfXBhGOm/ndXmeB9Es\n/wNoZPMWjuoncCRF2DmUwW7oZiCp8TC1Uy6G9sGHqc5887ZBuCYD32fBg98lrxAC\nex4UIBcXKGIUyn5NvXDb4g5K7Sg0JNc/sJy1IvdgBN2hFGN4pxFmT+u6omIjBBmS\n5KAei2mDAgMBAAECggEAD0qNV3ADYsclGDoZf/DyOQIW51jk8eB9+VeLJDG2HSrQ\n1NxqTPyjhsgqYdnyE3xMQdE1RBTuiKW/O5YRsQeieiFZqd7r9mD3HgQJ2QWMRIt2\nUo6kEorfTq459Idr94hOXl43x2xBQy+Zz4Xu44YOcTBPkLdxIQnmf/jMuoxmv/Wj\nGNrotpd24O0DdusQwhR7ZmZWlUuOkP5+JDeP+0OGGqzZNY8lUjs34Yt7Ca8sbjKc\nQELWa9XxunWuORBtzluxXo7S2cBBTGVL34Rf6TrgoXADwtfU9FADKYkz6Wgvgnqx\n/WE2r8FphLJYLp5ve3WadX/fOdNSxhvyJ8bC+iadSQKBgQDK5YqC7Z2du8/yPt8U\nKnYBo3Jhx7uwvOGsmAEYeggsFgzwVpcIpT+bQ7DwX5Q9gWIxsnsCLPR6TQXs99vr\nE2rLMHFRGkINoLSy3BrlUnLUjbQDwiKmLD0izdWGXML3T5I0KzVRYkeYQzcrhOKg\nk18U84+cuuB+3IVYCtklk0D6fQKBgQDDVrE/fNAL6NEx+lULNaQF1Q73jlakHeTN\ngb5GkqDn0deGUSFylJdtcY8vlp00I8+kDcGkl9lSpIkyry/OE4whMXg8hLoLjS49\ny4WydtGwoOvMWoCeqR2ck8nz1cyAwV292gwoOvMWoCeqR2ck8nz1cyAwV292gUy2Bfe2eRmz3wR1uHLha6Z/ue2XsoL\n7xKvs4cz/wKBgCH/0PQbqTvTSwdG7c7NRrUDlJk6BQOawx5O4nAdkt0AXO6xM+Ho\n/v2fnDjLa2XbFn9Jbz9wFQ+hdIq/BgUgXdbqqTJz+fmaom0OYRtoc4GWtUGj+HZs\nF1qLr2oyhSE4HkHLs8WNeH3VVZtfSzKpP1edcMVMs23OujGEr9qSEGNpAoGAMKVp\nVNc/dIfReTHPdhAwvecWaB5Bg3OSZH94JFklyzWeB+wyeTd6Ep5iO0a19aMpdcCb\nReMvEv640C+Cpz6E+ks4l1Gyh2fsaSVDMXOXuvYIYwby2xBguHqxo5DN8g61yq79\n9nCMWUpIMDZhvouWBbpQBjfN+sPWa2xpaeo6tH8CgYBX+uTVazbmmXzuL4LeYz1H\nJhl1BOC/nRc7abYkXbK/hoAcPLZCYNUkEyVaXseMfTRmciooZs21sFiTRNfANdJ/\n+DTYJ0PZ01qBElyjXcbJ2mneTOy0CBa5mPfWuHikIl9nJSYEnKPm8SlQ8ZxuyTns\n9+N7K41+VeXb5U44XVaF5w==\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@stok-takip-f061b.iam.gserviceaccount.com",
+  "client_id": "117747810902719699886",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40stok-takip-f061b.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
+
 def dosya_yolu(goreceli_yol):
-    """Önce .exe'nin yanındaki Dış Dosyayı okur, yoksa gömülü dosyaya bakar."""
+    """Görsel veya ikon dosyalarını PyInstaller içinden/dışından bulur."""
     olasi_yollar = [
         os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else None,
         os.path.abspath("."),
@@ -42,7 +45,7 @@ def dosya_yolu(goreceli_yol):
     return os.path.join(os.path.abspath("."), goreceli_yol)
 
 
-# --- FIRESTORE REST API YARDIMCISI ---
+# --- FIRESTORE REST API MİMARİSİ ---
 def parse_firestore_fields(fields):
     data = {}
     for key, val_dict in fields.items():
@@ -74,13 +77,13 @@ def build_firestore_fields(data):
 
 class FirestoreRESTClient:
     def __init__(self):
-        # Dışarıdan .json dosyası okumak yerine koddaki sözlükten oku
+        # Dışarıdan dosya okumak yerine koddaki sözlükten oturum açar
         self.key_data = FIREBASE_KEY_DATA
         self.project_id = self.key_data.get("project_id")
         self.creds = service_account.Credentials.from_service_account_info(
             self.key_data,
             scopes=['https://www.googleapis.com/auth/cloud-platform']
-        )        )
+        )
 
     def _get_token(self):
         if not self.creds.valid:
@@ -118,6 +121,7 @@ class FirestoreRESTClient:
             return resp.status == 200
 
 
+# --- MASAÜSTÜ ARAYÜZ SINIFI ---
 class StokUygulamasi:
     def __init__(self, root):
         self.root = root
@@ -125,6 +129,7 @@ class StokUygulamasi:
         self.root.geometry("1100x690")
         self.root.configure(bg="#f4f6f9")
 
+        # Sağ üst X butonuna basıldığında süreci Görev Yöneticisi'nden tamamen sil
         self.root.protocol("WM_DELETE_WINDOW", self.uygulamayi_kapat)
 
         try:
@@ -156,32 +161,17 @@ class StokUygulamasi:
                 self.tum_stoklar = self.client.get_all("stoklar")
 
                 self.root.after(0, self.stok_listele)
-                toplam = len(self.tum_stoklar)
-                self.durum_guncelle(f"✅ Başarılı! Toplam {toplam} parça listelendi.", "#27ae60")
-
-            except Exception as e:
-                err_msg = str(e)
-                self.durum_guncelle("❌ Bağlantı hatası!", "red")
-                self.root.after(0, lambda: messagebox.showerror("Veri Hatası", f"Hata Detayı:\n\n{err_msg}"))
-
-        threading.Thread(target=arkaplan_islem, daemon=True).start()
-
-                # REST API üzerinden verileri doğrudan çek
-                self.tum_stoklar = self.client.get_all("stoklar")
-
-                self.durum_guncelle("⏳ [3/3] Tablo dolduruluyor...", "#2980b9")
-                self.root.after(0, self.stok_listele)
                 
                 toplam = len(self.tum_stoklar)
                 if toplam == 0:
-                    self.durum_guncelle("ℹ️ Bağlantı kuruldu fakat veritabanı boş.", "#e67e22")
+                    self.durum_guncelle("ℹ️ Veritabanı bağlı fakat stok verisi yok.", "#e67e22")
                 else:
                     self.durum_guncelle(f"✅ Başarılı! Toplam {toplam} parça listelendi.", "#27ae60")
 
             except Exception as e:
                 err_msg = str(e)
-                self.durum_guncelle("❌ İmza / Bağlantı Hatası!", "red")
-                self.root.after(0, lambda: messagebox.showerror("Veri Hatası", f"Hata Detayı:\n\n{err_msg}\n\nİpucu: Windows saatini 'Şimdi Senkronize Et' ile güncellediğinizden emin olun."))
+                self.durum_guncelle("❌ Bağlantı Hatası!", "red")
+                self.root.after(0, lambda: messagebox.showerror("Veri Hatası", f"Hata Detayı:\n\n{err_msg}"))
 
         threading.Thread(target=arkaplan_islem, daemon=True).start()
 
