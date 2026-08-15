@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import pandas as pd
@@ -12,7 +13,6 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 def dosya_yolu(goreceli_yol):
-    """Hem PyInstaller tek dosya (.exe) içinde hem de normal .py çalışmasında dosyayı bulur."""
     olasi_yollar = [
         getattr(sys, '_MEIPASS', None),
         os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else None,
@@ -37,14 +37,12 @@ try:
             firebase_admin.initialize_app(cred)
         db = firestore.client()
         FIREBASE_AKTIF = True
-        print("✅ Firebase bağlantısı başarılı!")
     else:
         print("⚠️ firebase_key.json bulunamadı!")
 except Exception as e:
-    print("❌ Firebase başlatma hatası:", e)
+    print("❌ Firebase hatası:", e)
 
 
-# --- MASAÜSTÜ ARAYÜZ SINIFI ---
 class StokUygulamasi:
     def __init__(self, root):
         self.root = root
@@ -52,7 +50,6 @@ class StokUygulamasi:
         self.root.geometry("1100x670")
         self.root.configure(bg="#f4f6f9")
 
-        # ❌ X Butonuna basıldığında süreci Görev Yöneticisi'nden tamamen kapat
         self.root.protocol("WM_DELETE_WINDOW", self.uygulamayi_kapat)
 
         try:
@@ -64,29 +61,31 @@ class StokUygulamasi:
         self.arayuz_olustur()
         
         if FIREBASE_AKTIF:
-            # İlk açılışta verileri anında çek
-            self.verileri_ilk_yukle()
-            # Canlı dinleyiciyi başlat
-            self.canli_dinleyici_baslat()
+            # Arayüz açılışını dondurmamak için veri yüklemeyi arka planda başlat
+            self.root.after(100, self.verileri_arkaplanda_yukle)
         else:
-            messagebox.showerror("Hata", f"Firebase anahtar dosyası okunamadı!\nAranan Yol: {dosya_yolu('firebase_key.json')}")
+            messagebox.showerror("Hata", f"Firebase anahtar dosyası bulunamadı!\nAranan Yol: {dosya_yolu('firebase_key.json')}")
 
     def uygulamayi_kapat(self):
-        """Pencere kapatıldığında arka plan süreçlerini ve canlı dinleyiciyi öldürür."""
         try:
             self.root.destroy()
         except Exception:
             pass
         os._exit(0)
 
-    def verileri_ilk_yukle(self):
-        """Firebase'den verileri doğrudan çekip tabloya basar."""
-        try:
-            docs = db.collection("stoklar").stream()
-            self.tum_stoklar = [doc.to_dict() for doc in docs]
-            self.stok_listele()
-        except Exception as e:
-            print("Veri yükleme hatası:", e)
+    def verileri_arkaplanda_yukle(self):
+        """Arayüzü dondurmamak için Firebase veri çekme işlemini ayrı iş parçacığında çalıştırır."""
+        def hedef():
+            try:
+                docs = db.collection("stoklar").stream()
+                self.tum_stoklar = [doc.to_dict() for doc in docs]
+                self.root.after(0, self.stok_listele)
+                # İlk yükleme tamamlanınca canlı dinleyiciyi aç
+                self.canli_dinleyici_baslat()
+            except Exception as e:
+                print("Veri yükleme hatası:", e)
+
+        threading.Thread(target=hedef, daemon=True).start()
 
     def arayuz_olustur(self):
         baslik_frame = tk.Frame(self.root, bg="#2c3e50", pady=10)
@@ -141,10 +140,8 @@ class StokUygulamasi:
         tk.Button(alt_bar, text="➕ Stok Artır", bg="#27ae60", fg="white", font=("Arial", 10, "bold"), command=lambda: self.stok_islem_penceresi("arttir")).pack(side="left", padx=5)
         tk.Button(alt_bar, text="➖ Stok Azalt", bg="#c0392b", fg="white", font=("Arial", 10, "bold"), command=lambda: self.stok_islem_penceresi("azalt")).pack(side="left", padx=5)
         tk.Button(alt_bar, text="✏️ Düzenle", bg="#2980b9", fg="white", font=("Arial", 10, "bold"), command=self.parca_duzenle_penceresi).pack(side="left", padx=5)
-        
         tk.Button(alt_bar, text="🖨️ QR Etiket Yazdır", bg="#e67e22", fg="white", font=("Arial", 10, "bold"), command=self.qr_etiket_penceresi).pack(side="left", padx=10)
-
-        tk.Button(alt_bar, text="🔄 Yenile", bg="#7f8c8d", fg="white", font=("Arial", 10), command=self.verileri_ilk_yukle).pack(side="right", padx=5)
+        tk.Button(alt_bar, text="🔄 Yenile", bg="#7f8c8d", fg="white", font=("Arial", 10), command=self.verileri_arkaplanda_yukle).pack(side="right", padx=5)
 
     def canli_dinleyici_baslat(self):
         def on_snapshot(col_snapshot, changes, read_time):
