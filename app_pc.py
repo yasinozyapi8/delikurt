@@ -1,5 +1,9 @@
 import os
 import sys
+
+# 🛠️ PyInstaller / Windows gRPC Sonsuz Kilitlenme Önleyici
+os.environ["GRPC_DNS_RESOLVER"] = "native"
+
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import pandas as pd
@@ -50,7 +54,6 @@ class StokUygulamasi:
         self.root.geometry("1100x690")
         self.root.configure(bg="#f4f6f9")
 
-        # ❌ Sağ üst X butonuna basıldığında süreci Görev Yöneticisi'nden tamamen sil
         self.root.protocol("WM_DELETE_WINDOW", self.uygulamayi_kapat)
 
         try:
@@ -62,8 +65,7 @@ class StokUygulamasi:
         self.arayuz_olustur()
         
         if FIREBASE_AKTIF:
-            # Arayüz açıldıktan hemen sonra verileri yükle
-            self.root.after(200, self.verileri_yukle)
+            self.root.after(100, self.verileri_yukle)
         else:
             self.lbl_durum.config(text="❌ Firebase Bağlantı Hatası!", fg="red")
             messagebox.showerror("Firebase Hatası", FIREBASE_HATA)
@@ -76,13 +78,13 @@ class StokUygulamasi:
         os._exit(0)
 
     def verileri_yukle(self):
-        """Kilitlenme yapmadan Firestore'dan verileri doğrudan çeker ve tabloya doldurur."""
+        """Kilitlenme yapmadan Firestore'dan verileri çeker (10 sn zaman aşımı ile)."""
         self.lbl_durum.config(text="⏳ Firebase'den veriler yükleniyor, lütfen bekleyin...", fg="#2980b9")
         self.root.update()
 
         try:
-            # .get() kullanarak belgeleri doğrudan çekeriz (gRPC kilitlenmesini önler)
-            docs = db.collection("stoklar").get()
+            # timeout=10 ile sonsuz beklemeyi engelliyoruz
+            docs = db.collection("stoklar").get(timeout=10)
             self.tum_stoklar = [doc.to_dict() for doc in docs]
             
             self.stok_listele()
@@ -93,8 +95,8 @@ class StokUygulamasi:
             else:
                 self.lbl_durum.config(text=f"✅ Veriler güncellendi. Toplam {toplam_kayit} parça listelendi.", fg="#27ae60")
         except Exception as e:
-            self.lbl_durum.config(text="❌ Veri çekme hatası oluştu!", fg="red")
-            messagebox.showerror("Veri Çekme Hatası", f"Veritabanından veriler alınamadı:\n\n{e}")
+            self.lbl_durum.config(text="❌ Veri çekme zaman aşımına uğradı veya hata oluştu!", fg="red")
+            messagebox.showerror("Veri Çekme Hatası", f"Veritabanına ulaşılamadı:\n\n{e}")
 
     def arayuz_olustur(self):
         baslik_frame = tk.Frame(self.root, bg="#2c3e50", pady=10)
@@ -143,7 +145,6 @@ class StokUygulamasi:
         self.tablo.pack(fill="both", expand=True)
         self.tablo.bind("<Button-3>", self.sag_tik_menusu_goster)
 
-        # Alt Buton Barlarına Ek Olarak Durum Bilgi Çubuğu
         alt_bar = tk.Frame(self.root, bg="#f4f6f9", pady=5, padx=10)
         alt_bar.pack(fill="x")
 
@@ -153,7 +154,6 @@ class StokUygulamasi:
         tk.Button(alt_bar, text="🖨️ QR Etiket Yazdır", bg="#e67e22", fg="white", font=("Arial", 10, "bold"), command=self.qr_etiket_penceresi).pack(side="left", padx=10)
         tk.Button(alt_bar, text="🔄 Yenile", bg="#7f8c8d", fg="white", font=("Arial", 10), command=self.verileri_yukle).pack(side="right", padx=5)
 
-        # Durum Çubuğu (Status Bar)
         durum_bar = tk.Frame(self.root, bg="#e2e8f0", pady=3, padx=10)
         durum_bar.pack(fill="x", side="bottom")
         self.lbl_durum = tk.Label(durum_bar, text="Hazır", font=("Arial", 9), bg="#e2e8f0", fg="#333333", anchor="w")
