@@ -10,6 +10,7 @@ from kivy.utils import platform
 from kivy.clock import Clock
 from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
@@ -18,7 +19,8 @@ from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 from kivy.uix.camera import Camera
 from kivy.uix.image import AsyncImage
-from kivy.graphics import PushMatrix, PopMatrix, Rotate, Color, Line
+from kivy.uix.widget import Widget
+from kivy.graphics import Color, Line
 
 Window.clearcolor = (0.12, 0.15, 0.18, 1)
 Window.softinput_mode = 'below_target'
@@ -320,7 +322,6 @@ class AnaEkran(Screen):
         scroll_view.add_widget(content)
         main_popup_box.add_widget(scroll_view)
 
-        # 🖨️ QR Kod Göster (Sertifikasız, Harici Kütüphanesiz Web API)
         btn_qr_goster = Button(text='🖨️ QR Kod Göster', size_hint_y=0.10, background_color=(0.9, 0.5, 0.1, 1), background_normal='', bold=True)
         btn_qr_goster.bind(on_release=lambda x: self.qr_popup_goster(str(txt_barkod.text or txt_parca_kodu.text), txt_ad.text))
         main_popup_box.add_widget(btn_qr_goster)
@@ -446,7 +447,7 @@ class ParcaEkleEkrani(Screen):
             self.txt_kritik_stok.text = ""
 
 
-class BarkodVizoru(BoxLayout):
+class BarkodVizoru(Widget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.bind(pos=self._ciz, size=self._ciz)
@@ -454,10 +455,14 @@ class BarkodVizoru(BoxLayout):
     def _ciz(self, *args):
         self.canvas.before.clear()
         with self.canvas.before:
-            Color(0, 1, 0, 0.8)
+            Color(0, 1, 0, 0.9)  # Parlak Yeşil Çerçeve
             w, h = self.size
             x, y = self.pos
-            Line(rectangle=(x + w*0.1, y + h*0.25, w*0.8, h*0.5), width=2)
+            box_w = w * 0.75
+            box_h = h * 0.45
+            box_x = x + (w - box_w) / 2
+            box_y = y + (h - box_h) / 2
+            Line(rectangle=(box_x, box_y, box_w, box_h), width=3)
 
 
 class KameraEkrani(Screen):
@@ -492,32 +497,25 @@ class KameraEkrani(Screen):
                     play=True, 
                     resolution=(1280, 720),
                     allow_stretch=True, 
-                    keep_ratio=True, 
-                    size_hint=(1, 1)
+                    keep_ratio=False,
+                    size_hint=(1, 1),
+                    pos_hint={'x': 0, 'y': 0}
                 )
                 
-                with self.camera.canvas.before:
-                    PushMatrix()
-                    self.rot = Rotate(angle=-90, origin=self.camera.center)
-                with self.camera.canvas.after:
-                    PopMatrix()
-
-                self.camera.bind(pos=self._rotation_merkezini_guncelle, size=self._rotation_merkezini_guncelle)
-                
-                vizor_box = BoxLayout(size_hint=(1, 1))
+                # Kamera ve Çerçevenin tam üst üste oturması için FloatLayout
+                vizor_box = FloatLayout(size_hint=(1, 1))
                 vizor_box.add_widget(self.camera)
-                vizor_box.add_widget(BarkodVizoru())
                 
+                vizor = BarkodVizoru(size_hint=(1, 1), pos_hint={'x': 0, 'y': 0})
+                vizor_box.add_widget(vizor)
+                
+                self.cam_container.clear_widgets()
                 self.cam_container.add_widget(vizor_box)
             else:
                 self.camera.play = True
         except Exception as e:
             self.cam_container.clear_widgets()
             self.cam_container.add_widget(Label(text=f"Kamera Başlatılamadı:\n{e}"))
-
-    def _rotation_merkezini_guncelle(self, instance, value):
-        if hasattr(self, 'rot') and self.camera:
-            self.rot.origin = self.camera.center
 
     def barkod_isle(self, okunan_barkod):
         if not okunan_barkod: return
