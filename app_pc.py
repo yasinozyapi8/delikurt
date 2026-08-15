@@ -1,6 +1,5 @@
 import os
 import sys
-import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import pandas as pd
@@ -48,9 +47,10 @@ class StokUygulamasi:
     def __init__(self, root):
         self.root = root
         self.root.title("Yedek Parça Stok Takip Sistemi")
-        self.root.geometry("1100x670")
+        self.root.geometry("1100x690")
         self.root.configure(bg="#f4f6f9")
 
+        # ❌ Sağ üst X butonuna basıldığında süreci Görev Yöneticisi'nden tamamen sil
         self.root.protocol("WM_DELETE_WINDOW", self.uygulamayi_kapat)
 
         try:
@@ -62,8 +62,10 @@ class StokUygulamasi:
         self.arayuz_olustur()
         
         if FIREBASE_AKTIF:
-            self.root.after(100, self.verileri_arkaplanda_yukle)
+            # Arayüz açıldıktan hemen sonra verileri yükle
+            self.root.after(200, self.verileri_yukle)
         else:
+            self.lbl_durum.config(text="❌ Firebase Bağlantı Hatası!", fg="red")
             messagebox.showerror("Firebase Hatası", FIREBASE_HATA)
 
     def uygulamayi_kapat(self):
@@ -73,23 +75,26 @@ class StokUygulamasi:
             pass
         os._exit(0)
 
-    def verileri_arkaplanda_yukle(self):
-        """Arayüzü dondurmadan verileri çeker. Hata oluşursa ekrana mesaj kutusu basar."""
-        def hedef():
-            try:
-                docs = db.collection("stoklar").stream()
-                self.tum_stoklar = [doc.to_dict() for doc in docs]
-                
-                if not self.tum_stoklar:
-                    self.root.after(0, lambda: messagebox.showinfo("Bilgi", "Firebase 'stoklar' koleksiyonunda henüz kayıtlı veri yok."))
-                
-                self.root.after(0, self.stok_listele)
-                self.canli_dinleyici_baslat()
-            except Exception as e:
-                hata_mesaji = str(e)
-                self.root.after(0, lambda: messagebox.showerror("Veri Çekme Hatası", f"Veritabanından veriler alınamadı:\n\n{hata_mesaji}"))
+    def verileri_yukle(self):
+        """Kilitlenme yapmadan Firestore'dan verileri doğrudan çeker ve tabloya doldurur."""
+        self.lbl_durum.config(text="⏳ Firebase'den veriler yükleniyor, lütfen bekleyin...", fg="#2980b9")
+        self.root.update()
 
-        threading.Thread(target=hedef, daemon=True).start()
+        try:
+            # .get() kullanarak belgeleri doğrudan çekeriz (gRPC kilitlenmesini önler)
+            docs = db.collection("stoklar").get()
+            self.tum_stoklar = [doc.to_dict() for doc in docs]
+            
+            self.stok_listele()
+            
+            toplam_kayit = len(self.tum_stoklar)
+            if toplam_kayit == 0:
+                self.lbl_durum.config(text="ℹ️ Veritabanı bağlı fakat henüz kayıtlı stok verisi yok.", fg="#e67e22")
+            else:
+                self.lbl_durum.config(text=f"✅ Veriler güncellendi. Toplam {toplam_kayit} parça listelendi.", fg="#27ae60")
+        except Exception as e:
+            self.lbl_durum.config(text="❌ Veri çekme hatası oluştu!", fg="red")
+            messagebox.showerror("Veri Çekme Hatası", f"Veritabanından veriler alınamadı:\n\n{e}")
 
     def arayuz_olustur(self):
         baslik_frame = tk.Frame(self.root, bg="#2c3e50", pady=10)
@@ -138,27 +143,21 @@ class StokUygulamasi:
         self.tablo.pack(fill="both", expand=True)
         self.tablo.bind("<Button-3>", self.sag_tik_menusu_goster)
 
-        alt_bar = tk.Frame(self.root, bg="#f4f6f9", pady=10, padx=10)
+        # Alt Buton Barlarına Ek Olarak Durum Bilgi Çubuğu
+        alt_bar = tk.Frame(self.root, bg="#f4f6f9", pady=5, padx=10)
         alt_bar.pack(fill="x")
 
         tk.Button(alt_bar, text="➕ Stok Artır", bg="#27ae60", fg="white", font=("Arial", 10, "bold"), command=lambda: self.stok_islem_penceresi("arttir")).pack(side="left", padx=5)
         tk.Button(alt_bar, text="➖ Stok Azalt", bg="#c0392b", fg="white", font=("Arial", 10, "bold"), command=lambda: self.stok_islem_penceresi("azalt")).pack(side="left", padx=5)
         tk.Button(alt_bar, text="✏️ Düzenle", bg="#2980b9", fg="white", font=("Arial", 10, "bold"), command=self.parca_duzenle_penceresi).pack(side="left", padx=5)
         tk.Button(alt_bar, text="🖨️ QR Etiket Yazdır", bg="#e67e22", fg="white", font=("Arial", 10, "bold"), command=self.qr_etiket_penceresi).pack(side="left", padx=10)
-        tk.Button(alt_bar, text="🔄 Yenile", bg="#7f8c8d", fg="white", font=("Arial", 10), command=self.verileri_arkaplanda_yukle).pack(side="right", padx=5)
+        tk.Button(alt_bar, text="🔄 Yenile", bg="#7f8c8d", fg="white", font=("Arial", 10), command=self.verileri_yukle).pack(side="right", padx=5)
 
-    def canli_dinleyici_baslat(self):
-        def on_snapshot(col_snapshot, changes, read_time):
-            self.tum_stoklar = [doc.to_dict() for doc in col_snapshot]
-            try:
-                self.root.after(0, self.stok_listele)
-            except Exception:
-                pass
-
-        try:
-            db.collection("stoklar").on_snapshot(on_snapshot)
-        except Exception as e:
-            print("Canlı dinleyici hatası:", e)
+        # Durum Çubuğu (Status Bar)
+        durum_bar = tk.Frame(self.root, bg="#e2e8f0", pady=3, padx=10)
+        durum_bar.pack(fill="x", side="bottom")
+        self.lbl_durum = tk.Label(durum_bar, text="Hazır", font=("Arial", 9), bg="#e2e8f0", fg="#333333", anchor="w")
+        self.lbl_durum.pack(fill="x")
 
     def sag_tik_menusu_goster(self, event):
         row_id = self.tablo.identify_row(event.y)
@@ -286,6 +285,7 @@ class StokUygulamasi:
                 })
                 messagebox.showinfo("Başarılı", "Güncellendi.")
                 pencere.destroy()
+                self.verileri_yukle()
             except Exception as e:
                 messagebox.showerror("Hata", f"Güncelleme hatası: {e}")
 
@@ -302,6 +302,7 @@ class StokUygulamasi:
             try:
                 db.collection("stoklar").document(parca_kodu).delete()
                 messagebox.showinfo("Başarılı", "Silindi.")
+                self.verileri_yukle()
             except Exception as e:
                 messagebox.showerror("Hata", f"Silme hatası: {e}")
 
@@ -346,6 +347,7 @@ class StokUygulamasi:
                 })
                 messagebox.showinfo("Başarılı", "Kaydedildi.")
                 pencere.destroy()
+                self.verileri_yukle()
             except Exception as e:
                 messagebox.showerror("Hata", f"Hata: {e}")
 
@@ -383,6 +385,7 @@ class StokUygulamasi:
                 })
                 messagebox.showinfo("Başarılı", "Güncellendi.")
                 pencere.destroy()
+                self.verileri_yukle()
             except Exception as e:
                 messagebox.showerror("Hata", f"Hata: {e}")
 
@@ -430,6 +433,7 @@ class StokUygulamasi:
                 })
                 messagebox.showinfo("Başarılı", "Stok güncellendi.")
                 pencere.destroy()
+                self.verileri_yukle()
             except Exception as e:
                 messagebox.showerror("Hata", f"Hata: {e}")
 
@@ -454,6 +458,7 @@ class StokUygulamasi:
                     })
                     eklenen += 1
                 messagebox.showinfo("Başarılı", f"{eklenen} parça aktarıldı.")
+                self.verileri_yukle()
             except Exception as e:
                 messagebox.showerror("Hata", f"Excel hatası: {e}")
 
