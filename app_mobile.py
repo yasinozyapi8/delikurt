@@ -3,6 +3,7 @@ import sys
 import json
 import threading
 import requests
+import io
 
 from kivy.app import App
 from kivy.core.window import Window
@@ -17,14 +18,18 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 from kivy.uix.camera import Camera
-from kivy.graphics import PushMatrix, PopMatrix, Rotate
+from kivy.uix.image import Image
+from kivy.graphics import PushMatrix, PopMatrix, Rotate, Color, Line
+from kivy.core.image import Image as CoreImage
+
+import qrcode
 
 Window.clearcolor = (0.12, 0.15, 0.18, 1)
 Window.softinput_mode = 'below_target'
 
 # 🔥 FIREBASE WEB API KEY YAPILANDIRMASI
 PROJECT_ID = "stok-takip-f061b"
-API_KEY = "AIzaSyCxg29J4To7hVgXxHOhAY76oOwDcZqyvRY"  # AIzaSy... key'inizi yazın
+API_KEY = "AIzaSyCxg29J4To7hVgXxHOhAY76oOwDcZqyvRY"  # Masaüstündeki AIzaSy... key'inizi yapıştırın
 BASE_URL = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/stoklar"
 
 VERITABANI = []
@@ -162,7 +167,7 @@ class AnaEkran(Screen):
         main_layout = BoxLayout(orientation='vertical', padding=12, spacing=10)
         
         main_layout.add_widget(Label(
-            text="STOK TAKİP SİSTEMİ (MOBİL)", 
+            text="DELİKURT STOK TAKİP (MOBİL)", 
             font_size='18sp', 
             size_hint_y=0.08, 
             bold=True,
@@ -181,7 +186,7 @@ class AnaEkran(Screen):
         btn_ara = Button(text='Ara', size_hint_x=0.22, background_color=(0.2, 0.5, 0.9, 1), background_normal='', bold=True)
         btn_ara.bind(on_release=self.barkod_ara)
         
-        btn_kamera = Button(text='Kamera', size_hint_x=0.28, background_color=(0.8, 0.4, 0.1, 1), background_normal='', bold=True)
+        btn_kamera = Button(text='📷 Kamera', size_hint_x=0.28, background_color=(0.8, 0.4, 0.1, 1), background_normal='', bold=True)
         btn_kamera.bind(on_release=self.kamera_ac)
 
         arama_box.add_widget(self.txt_barkod_ara)
@@ -281,22 +286,22 @@ class AnaEkran(Screen):
         data = item_button.item_data
         
         main_popup_box = BoxLayout(orientation='vertical', spacing=8, padding=10)
-        scroll_view = ScrollView(size_hint=(1, 0.85))
+        scroll_view = ScrollView(size_hint=(1, 0.78))
         content = BoxLayout(orientation='vertical', spacing=8, size_hint_y=None)
         content.bind(minimum_height=content.setter('height'))
         
-        txt_ad = TextInput(text=str(data.get('parca_adi', '')), multiline=False, size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
-        txt_parca_kodu = TextInput(text=str(data.get('parca_kodu', '')), multiline=False, size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
-        txt_barkod = TextInput(text=str(data.get('barkod_no', '')), multiline=False, size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
-        txt_raf = TextInput(text=str(data.get('raf_konumu', '')), multiline=False, size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
-        txt_stok = TextInput(text=str(data.get('miktar', 0)), multiline=False, input_filter='int', size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
-        txt_kritik_stok = TextInput(text=str(data.get('kritik_seviye', 5)), multiline=False, input_filter='int', size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
+        txt_ad = TextInput(text=str(data.get('parca_adi', '')), multiline=False, size_hint_y=None, height=55, font_size='16sp')
+        txt_parca_kodu = TextInput(text=str(data.get('parca_kodu', '')), multiline=False, size_hint_y=None, height=55, font_size='16sp')
+        txt_barkod = TextInput(text=str(data.get('barkod_no', '')), multiline=False, size_hint_y=None, height=55, font_size='16sp')
+        txt_raf = TextInput(text=str(data.get('raf_konumu', '')), multiline=False, size_hint_y=None, height=55, font_size='16sp')
+        txt_stok = TextInput(text=str(data.get('miktar', 0)), multiline=False, input_filter='int', size_hint_y=None, height=55, font_size='16sp')
+        txt_kritik_stok = TextInput(text=str(data.get('kritik_seviye', 5)), multiline=False, input_filter='int', size_hint_y=None, height=55, font_size='16sp')
 
         content.add_widget(Label(text="Parça Adı:", size_hint_y=None, height=25, bold=True))
         content.add_widget(txt_ad)
         content.add_widget(Label(text="Parça Kodu:", size_hint_y=None, height=25, bold=True))
         content.add_widget(txt_parca_kodu)
-        content.add_widget(Label(text="Barkod:", size_hint_y=None, height=25, bold=True))
+        content.add_widget(Label(text="Barkod / QR:", size_hint_y=None, height=25, bold=True))
         content.add_widget(txt_barkod)
         content.add_widget(Label(text="Raf Kodu:", size_hint_y=None, height=25, bold=True))
         content.add_widget(txt_raf)
@@ -319,10 +324,15 @@ class AnaEkran(Screen):
         scroll_view.add_widget(content)
         main_popup_box.add_widget(scroll_view)
 
-        buton_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=0.15)
+        # 🖨️ QR Kod Göster Butonu
+        btn_qr_goster = Button(text='🖨️ QR Kod Göster', size_hint_y=0.10, background_color=(0.9, 0.5, 0.1, 1), background_normal='', bold=True)
+        btn_qr_goster.bind(on_release=lambda x: self.qr_popup_goster(str(txt_barkod.text or txt_parca_kodu.text), txt_ad.text))
+        main_popup_box.add_widget(btn_qr_goster)
+
+        buton_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=0.12)
         btn_kaydet = Button(text='Güncelle', background_color=(0.1, 0.5, 0.9, 1), background_normal='', bold=True, font_size='16sp')
         btn_sil = Button(text='Sil', background_color=(0.8, 0.2, 0.2, 1), background_normal='', bold=True, font_size='16sp')
-        popup = Popup(title='Parça Düzenle / Sil', content=main_popup_box, size_hint=(0.92, 0.90))
+        popup = Popup(title='Parça Düzenle / Sil', content=main_popup_box, size_hint=(0.92, 0.92))
 
         def kaydet_action(x):
             eski_doc_id = str(data.get('parca_kodu'))
@@ -355,6 +365,26 @@ class AnaEkran(Screen):
         
         popup.open()
 
+    def qr_popup_goster(self, barkod_metni, parca_adi):
+        qr = qrcode.QRCode(version=1, box_size=8, border=2)
+        qr.add_data(barkod_metni)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG')
+        buffer.seek(0)
+
+        core_img = CoreImage(buffer, ext='png')
+        kivy_img = Image(texture=core_img.texture)
+
+        box = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        box.add_widget(Label(text=f"{parca_adi}\nBarkod: {barkod_metni}", font_size='15sp', bold=True, size_hint_y=0.2, halign='center'))
+        box.add_widget(kivy_img)
+
+        qr_popup = Popup(title='QR Etiket', content=box, size_hint=(0.85, 0.65))
+        qr_popup.open()
+
 
 class ParcaEkleEkrani(Screen):
     def __init__(self, **kwargs):
@@ -365,18 +395,18 @@ class ParcaEkleEkrani(Screen):
 
         form_layout = BoxLayout(orientation='vertical', spacing=6, size_hint_y=0.78)
 
-        self.txt_ad = TextInput(hint_text='Örn: Rulman 6204', multiline=False, size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
-        self.txt_parca_kodu = TextInput(hint_text='Örn: PRC-001', multiline=False, size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
-        self.txt_barkod = TextInput(hint_text='Örn: 86900012345', multiline=False, size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
-        self.txt_raf = TextInput(hint_text='Örn: A-12', multiline=False, size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
-        self.txt_stok = TextInput(hint_text='Örn: 10', multiline=False, input_filter='int', size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
-        self.txt_kritik_stok = TextInput(hint_text='Örn: 5', multiline=False, input_filter='int', size_hint_y=None, height=55, font_size='16sp', use_bubble=False, use_handles=False)
+        self.txt_ad = TextInput(hint_text='Örn: Rulman 6204', multiline=False, size_hint_y=None, height=55, font_size='16sp')
+        self.txt_parca_kodu = TextInput(hint_text='Örn: PRC-001', multiline=False, size_hint_y=None, height=55, font_size='16sp')
+        self.txt_barkod = TextInput(hint_text='Örn: 86900012345', multiline=False, size_hint_y=None, height=55, font_size='16sp')
+        self.txt_raf = TextInput(hint_text='Örn: A-12', multiline=False, size_hint_y=None, height=55, font_size='16sp')
+        self.txt_stok = TextInput(hint_text='Örn: 10', multiline=False, input_filter='int', size_hint_y=None, height=55, font_size='16sp')
+        self.txt_kritik_stok = TextInput(hint_text='Örn: 5', multiline=False, input_filter='int', size_hint_y=None, height=55, font_size='16sp')
 
         form_layout.add_widget(Label(text="Parça Adı:", size_hint_y=None, height=22, bold=True))
         form_layout.add_widget(self.txt_ad)
         form_layout.add_widget(Label(text="Parça Kodu:", size_hint_y=None, height=22, bold=True))
         form_layout.add_widget(self.txt_parca_kodu)
-        form_layout.add_widget(Label(text="Barkod:", size_hint_y=None, height=22, bold=True))
+        form_layout.add_widget(Label(text="Barkod / QR:", size_hint_y=None, height=22, bold=True))
         form_layout.add_widget(self.txt_barkod)
         form_layout.add_widget(Label(text="Raf Numarası:", size_hint_y=None, height=22, bold=True))
         form_layout.add_widget(self.txt_raf)
@@ -399,6 +429,10 @@ class ParcaEkleEkrani(Screen):
         main_layout.add_widget(btn_box)
 
         self.add_widget(main_layout)
+
+    def otomatık_barkod_doldur(self, barkod_metni):
+        self.txt_parca_kodu.text = barkod_metni
+        self.txt_barkod.text = barkod_metni
 
     def kaydet(self, instance):
         if self.txt_ad.text and self.txt_parca_kodu.text:
@@ -426,14 +460,39 @@ class ParcaEkleEkrani(Screen):
             self.txt_kritik_stok.text = ""
 
 
+class BarkodVizoru(BoxLayout):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.bind(pos=self._ciz, size=self._ciz)
+
+    def _ciz(self, *args):
+        self.canvas.before.clear()
+        with self.canvas.before:
+            Color(0, 1, 0, 0.8)  # Vizör çerçeve rengi (Yeşil)
+            w, h = self.size
+            x, y = self.pos
+            # Çerçeve hatları
+            Line(rectangle=(x + w*0.1, y + h*0.25, w*0.8, h*0.5), width=2)
+
+
 class KameraEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
-        self.layout.add_widget(Label(text="BARKOD TARAMA EKRANI", font_size='18sp', size_hint_y=0.08, bold=True))
+        self.layout.add_widget(Label(text="BARKOD / QR TARAMA VİZÖRÜ", font_size='18sp', size_hint_y=0.08, bold=True, color=(0.3, 0.7, 1, 1)))
 
-        self.cam_container = BoxLayout(size_hint=(1, 0.82))
+        self.cam_container = BoxLayout(size_hint=(1, 0.70))
         self.layout.add_widget(self.cam_container)
+
+        # Barkod Manuel Giriş & Okuma Simülasyon Kutusu
+        scan_box = BoxLayout(orientation='horizontal', size_hint_y=0.10, spacing=6)
+        self.txt_manual_scan = TextInput(hint_text='Okunan Barkodu Yazın / Tarayın...', multiline=False, size_hint_x=0.7, font_size='15sp')
+        btn_process_scan = Button(text='Tarat', size_hint_x=0.3, background_color=(0.1, 0.6, 0.3, 1), background_normal='', bold=True)
+        btn_process_scan.bind(on_release=lambda x: self.barkod_isle(self.txt_manual_scan.text.strip()))
+        
+        scan_box.add_widget(self.txt_manual_scan)
+        scan_box.add_widget(btn_process_scan)
+        self.layout.add_widget(scan_box)
 
         btn_geri = Button(text='Geri Dön', size_hint_y=0.10, background_color=(0.5, 0.5, 0.5, 1), background_normal='', bold=True, font_size='18sp')
         btn_geri.bind(on_release=self.geri_don)
@@ -460,7 +519,13 @@ class KameraEkrani(Screen):
                     PopMatrix()
 
                 self.camera.bind(pos=self._rotation_merkezini_guncelle, size=self._rotation_merkezini_guncelle)
-                self.cam_container.add_widget(self.camera)
+                
+                # Kamera kabına Vizör çerçevesini ekleme
+                vizor_box = BoxLayout(size_hint=(1, 1))
+                vizor_box.add_widget(self.camera)
+                vizor_box.add_widget(BarkodVizoru())
+                
+                self.cam_container.add_widget(vizor_box)
             else:
                 self.camera.play = True
         except Exception as e:
@@ -470,6 +535,60 @@ class KameraEkrani(Screen):
     def _rotation_merkezini_guncelle(self, instance, value):
         if hasattr(self, 'rot') and self.camera:
             self.rot.origin = self.camera.center
+
+    def barkod_isle(self, okunan_barkod):
+        if not okunan_barkod: return
+
+        # Veritabanında parçayı arama
+        bulunan_item = None
+        with VERI_KILIDI:
+            for item in VERITABANI:
+                if str(item.get("barkod_no", "")).lower() == okunan_barkod.lower() or str(item.get("parca_kodu", "")).lower() == okunan_barkod.lower():
+                    bulunan_item = item
+                    break
+
+        if bulunan_item:
+            # 1. SENARYO: Parça Kod/Barkod Veritabanında VAR -> Hızlı Stok İşlem Pop-up'ı
+            self.hizli_stok_popup_ac(bulunan_item)
+        else:
+            # 2. SENARYO: Parça Kod/Barkod Veritabanında YOK -> Yeni Parça Ekle Ekranına Yönlendir & Barkodu Doldur
+            ekle_ekrani = self.manager.get_screen('ekle_ekrani')
+            ekle_ekrani.otomatık_barkod_doldur(okunan_barkod)
+            self.manager.current = 'ekle_ekrani'
+
+    def hizli_stok_popup_ac(self, item):
+        parca_kodu = str(item.get('parca_kodu'))
+        parca_adi = str(item.get('parca_adi'))
+        mevcut_stok = int(item.get('miktar', 0))
+
+        content = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        content.add_widget(Label(text=f"PARÇA BULUNDU!\n\n{parca_adi}\nKod: {parca_kodu}\nMevcut Stok: {mevcut_stok} Adet", font_size='16sp', bold=True, halign='center'))
+
+        btn_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=0.4)
+        btn_arttir = Button(text='+1 Ekle', background_color=(0.1, 0.7, 0.3, 1), background_normal='', bold=True, font_size='18sp')
+        btn_azalt = Button(text='-1 Düş', background_color=(0.8, 0.2, 0.2, 1), background_normal='', bold=True, font_size='18sp')
+
+        popup = Popup(title='Hızlı Stok Güncelleme', content=content, size_hint=(0.85, 0.45))
+
+        def arttir_action(x):
+            item['miktar'] = mevcut_stok + 1
+            REST_stok_guncelle_async(parca_kodu, item['miktar'])
+            popup.dismiss()
+
+        def azalt_action(x):
+            if mevcut_stok > 0:
+                item['miktar'] = mevcut_stok - 1
+                REST_stok_guncelle_async(parca_kodu, item['miktar'])
+            popup.dismiss()
+
+        btn_arttir.bind(on_release=arttir_action)
+        btn_azalt.bind(on_release=azalt_action)
+
+        btn_box.add_widget(btn_arttir)
+        btn_box.add_widget(btn_azalt)
+        content.add_widget(btn_box)
+
+        popup.open()
 
     def on_leave(self):
         if self.camera:
