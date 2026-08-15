@@ -40,7 +40,7 @@ except Exception as e:
 class StokUygulamasi:
     def __init__(self, root):
         self.root = root
-        self.root.title("Yedek Parça Stok Takip Sistemi v2.1 (Bulut & Live OTA)")
+        self.root.title("Yedek Parça Stok Takip Sistemi")
         self.root.geometry("1100x670")
         self.root.configure(bg="#f4f6f9")
 
@@ -55,18 +55,18 @@ class StokUygulamasi:
         if FIREBASE_AKTIF:
             self.canli_dinleyici_baslat()
         else:
-            messagebox.showerror("Hata", "Firebase anahtar dosyası (firebase_key.json) bulunamadı!")
+            messagebox.showerror("Hata", "Firebase anahtar dosyası bulunamadı!")
 
     def arayuz_olustur(self):
         baslik_frame = tk.Frame(self.root, bg="#2c3e50", pady=10)
         baslik_frame.pack(fill="x")
-        tk.Label(baslik_frame, text="YEDEK PARÇA STOK TAKİP SİSTEMİ (BULUT & CANLI)", font=("Arial", 16, "bold"), fg="white", bg="#2c3e50").pack()
+        tk.Label(baslik_frame, text="YEDEK PARÇA STOK TAKİP SİSTEMİ", font=("Arial", 16, "bold"), fg="white", bg="#2c3e50").pack()
 
         ust_bar = tk.Frame(self.root, bg="#f4f6f9", pady=10, padx=10)
         ust_bar.pack(fill="x")
 
-        tk.Label(ust_bar, text="Ara (Kod/Ad/Barkod):", font=("Arial", 10, "bold"), bg="#f4f6f9").pack(side="left", padx=5)
-        self.ent_arama = tk.Entry(ust_bar, width=20, font=("Arial", 10))
+        tk.Label(ust_bar, text="Arama:", font=("Arial", 10, "bold"), bg="#f4f6f9").pack(side="left", padx=5)
+        self.ent_arama = tk.Entry(ust_bar, width=22, font=("Arial", 10))
         self.ent_arama.pack(side="left", padx=5)
         self.ent_arama.bind("<KeyRelease>", lambda e: self.stok_listele())
 
@@ -86,11 +86,11 @@ class StokUygulamasi:
         self.tablo = ttk.Treeview(tablo_frame, columns=sutunlar, show="headings")
         
         self.tablo.heading("parca_kodu", text="Parça Kodu")
-        self.tablo.heading("barkod_no", text="Barkod No / QR")
+        self.tablo.heading("barkod_no", text="Barkod / QR No")
         self.tablo.heading("parca_adi", text="Parça Adı")
         self.tablo.heading("kategori", text="Kategori")
         self.tablo.heading("miktar", text="Miktar")
-        self.tablo.heading("raf_konumu", text="Çekmece / Raf")
+        self.tablo.heading("raf_konumu", text="Raf Konumu")
         self.tablo.heading("durum", text="Stok Durumu")
 
         self.tablo.column("parca_kodu", width=110, anchor="center")
@@ -128,7 +128,7 @@ class StokUygulamasi:
         if row_id:
             self.tablo.selection_set(row_id)
             menu = tk.Menu(self.root, tearoff=0)
-            menu.add_command(label="🖨️ Çekmece / Adet QR Etiket Yazdır", command=self.qr_etiket_penceresi)
+            menu.add_command(label="🖨️ QR Etiket Yazdır", command=self.qr_etiket_penceresi)
             menu.add_separator()
             menu.add_command(label="✏️ Parça Bilgilerini Düzenle", command=self.parca_duzenle_penceresi)
             menu.add_command(label="🏷️ Barkod / Raf Düzenle", command=self.barkod_guncelle_penceresi)
@@ -161,11 +161,10 @@ class StokUygulamasi:
             durum = "⚠️ KRİTİK" if miktar <= kritik else "OK"
             self.tablo.insert("", "end", values=(kod, barkod, ad, kat, miktar, raf, durum))
 
-    # --- QR KOD YAZDIRMA MODÜLÜ ---
     def qr_etiket_penceresi(self):
         secili = self.tablo.selection()
         if not secili:
-            messagebox.showwarning("Uyarı", "Lütfen QR etiketini basmak istediğiniz parçayı seçin!")
+            messagebox.showwarning("Uyarı", "Lütfen bir parça seçin!")
             return
 
         item_values = self.tablo.item(secili[0])["values"]
@@ -175,18 +174,16 @@ class StokUygulamasi:
         raf = str(item_values[5])
 
         pencere = tk.Toplevel(self.root)
-        pencere.title(f"QR Etiket Oluştur: {parca_adi}")
+        pencere.title(f"QR Etiket: {parca_adi}")
         pencere.geometry("380x420")
 
-        tk.Label(pencere, text=f"{parca_adi}\nKod: {parca_kodu} | Raf/Çekmece: {raf}", font=("Arial", 10, "bold")).pack(pady=10)
+        tk.Label(pencere, text=f"{parca_adi}\nKod: {parca_kodu} | Raf: {raf}", font=("Arial", 10, "bold")).pack(pady=10)
 
-        # QR Görsel Oluşturma
         qr = qrcode.QRCode(version=1, box_size=6, border=2)
         qr.add_data(barkod)
         qr.make(fit=True)
         img = qr.make_image(fill_color="black", back_color="white")
         
-        # Etiketi göster
         img_tk = ImageTk.PhotoImage(img)
         lbl_img = tk.Label(pencere, image=img_tk)
         lbl_img.image = img_tk
@@ -216,7 +213,7 @@ class StokUygulamasi:
         pencere.geometry("380x280")
 
         tk.Label(pencere, text=f"Parça Kodu: {parca_kodu}", font=("Arial", 10, "bold")).pack(pady=10)
-        tk.Label(pencere, text="Parça Adı*:").pack()
+        tk.Label(pencere, text="Parça Adı:").pack()
         ent_ad = tk.Entry(pencere, width=30)
         ent_ad.insert(0, mevcut_data.get("parca_adi", ""))
         ent_ad.pack(pady=5)
@@ -264,7 +261,7 @@ class StokUygulamasi:
         parca_kodu = str(item_values[0])
         parca_adi = str(item_values[2])
 
-        if messagebox.askyesno("Silme Onayı", f"'{parca_adi}' tamamen silinecek?"):
+        if messagebox.askyesno("Silme Onayı", f"'{parca_adi}' silinecek, onaylıyor musunuz?"):
             try:
                 db.collection("stoklar").document(parca_kodu).delete()
                 messagebox.showinfo("Başarılı", "Silindi.")
@@ -276,9 +273,9 @@ class StokUygulamasi:
         pencere.title("Yeni Parça Ekle")
         pencere.geometry("350x400")
 
-        fields = [("Parça Kodu*:", "kod"), ("Barkod / QR No:", "barkod"), ("Parça Adı*:", "ad"), 
+        fields = [("Parça Kodu:", "kod"), ("Barkod / QR No:", "barkod"), ("Parça Adı:", "ad"), 
                   ("Kategori:", "kat"), ("Başlangıç Miktarı:", "miktar"), 
-                  ("Kritik Stok Seviyesi:", "kritik"), ("Çekmece / Raf Konumu:", "raf")]
+                  ("Kritik Stok Seviyesi:", "kritik"), ("Raf Konumu:", "raf")]
         
         entries = {}
         for i, (label_text, key) in enumerate(fields):
@@ -327,7 +324,7 @@ class StokUygulamasi:
         mevcut_raf = str(item_values[5])
 
         pencere = tk.Toplevel(self.root)
-        pencere.title(f"Barkod / Çekmece Düzenle")
+        pencere.title("Barkod ve Raf Düzenle")
         pencere.geometry("380x250")
 
         tk.Label(pencere, text=f"Parça: {parca_adi}\nKod: {parca_kodu}", font=("Arial", 9, "bold")).pack(pady=10)
@@ -336,7 +333,7 @@ class StokUygulamasi:
         ent_barkod.insert(0, mevcut_barkod)
         ent_barkod.pack(pady=5)
 
-        tk.Label(pencere, text="Çekmece / Raf Konumu:").pack(pady=(5, 0))
+        tk.Label(pencere, text="Raf Konumu:").pack(pady=(5, 0))
         ent_raf = tk.Entry(pencere, width=28)
         ent_raf.insert(0, mevcut_raf if mevcut_raf != "Belirtilmedi" else "")
         ent_raf.pack(pady=5)
@@ -419,7 +416,7 @@ class StokUygulamasi:
                         "raf_konumu": str(row.get('raf_konumu', 'Belirtilmedi'))
                     })
                     eklenen += 1
-                messagebox.showinfo("Başarılı", f"{eklenen} parça buluta aktarıldı.")
+                messagebox.showinfo("Başarılı", f"{eklenen} parça aktarıldı.")
             except Exception as e:
                 messagebox.showerror("Hata", f"Excel hatası: {e}")
 
