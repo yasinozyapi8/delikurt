@@ -21,11 +21,10 @@ FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/d
 
 
 class RotatedCamera(Camera):
-    """Android Dikey Ekran İçin Açı Düzeltmeli ve Tam Ekran Kamera"""
     def __init__(self, angle=-90, **kwargs):
         super().__init__(**kwargs)
         self.allow_stretch = True
-        self.keep_ratio = False  # Kameranın tüm alanı doldurmasını sağlar
+        self.keep_ratio = False
         with self.canvas.before:
             PushMatrix()
             self.rot = Rotate(angle=angle, axis=(0, 0, 1))
@@ -38,7 +37,6 @@ class RotatedCamera(Camera):
 
 
 class CameraScanWidget(FloatLayout):
-    """Genişletilmiş Kamera ve Büyütülmüş Yeşil Çerçeve"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
@@ -53,18 +51,16 @@ class CameraScanWidget(FloatLayout):
             self.add_widget(self.cam)
         except Exception:
             self.cam = None
-            self.add_widget(Label(text="Kamera başlatılamadı veya izin verilmedi.", pos_hint={'center_x': 0.5, 'center_y': 0.5}))
+            self.add_widget(Label(text="Kamera başlatılamadı.", pos_hint={'center_x': 0.5, 'center_y': 0.5}))
 
-        # Kalınlaştırılmış ve Büyütülmüş Yeşil Odak Çerçevesi
         with self.canvas.after:
-            Color(0.12, 0.85, 0.38, 1) # Neon Yeşil
+            Color(0.12, 0.85, 0.38, 1)
             self.line = Line(width=4)
             
         self.bind(pos=self.update_frame, size=self.update_frame)
 
-        # Üst Bilgi Yazısı
         lbl = Label(
-            text="QR / Barkodu Yeşil Çerçeveye Hizalayın",
+            text="QR / Barkodu Çerçeveye Hizalayın",
             size_hint=(1, None),
             height='35dp',
             pos_hint={'top': 0.99, 'center_x': 0.5},
@@ -76,7 +72,6 @@ class CameraScanWidget(FloatLayout):
 
     def update_frame(self, *args):
         cx, cy = self.center
-        # Çerçeve boyutu ekran genişliği/yüksekliğine oranla daha büyük ayarlandı
         w = min(self.width * 0.85, self.height * 0.55)
         self.line.rectangle = (cx - w/2, cy - w/2, w, w)
 
@@ -146,7 +141,6 @@ class AnaStokEkrani(Screen):
         
         main_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
         
-        # Üst Başlık
         title = Label(
             text="STOK TAKİP SİSTEMİ", 
             font_size='22sp', 
@@ -157,7 +151,6 @@ class AnaStokEkrani(Screen):
         )
         main_layout.add_widget(title)
         
-        # Arama Barı
         scan_box = BoxLayout(orientation='horizontal', spacing=5, size_hint_y=None, height='50dp')
         
         self.txt_scan = TextInput(
@@ -196,7 +189,6 @@ class AnaStokEkrani(Screen):
         scan_box.add_widget(btn_kamera)
         main_layout.add_widget(scan_box)
         
-        # Stok Kartları ScrollView
         scroll = ScrollView()
         self.grid_stok = GridLayout(cols=1, spacing=8, size_hint_y=None)
         self.grid_stok.bind(minimum_height=self.grid_stok.setter('height'))
@@ -204,7 +196,6 @@ class AnaStokEkrani(Screen):
         scroll.add_widget(self.grid_stok)
         main_layout.add_widget(scroll)
         
-        # Alt Yeşil Buton
         btn_go_add = Button(
             text='+ Yeni Yedek Parça Ekle',
             size_hint_y=None,
@@ -356,12 +347,16 @@ class AnaStokEkrani(Screen):
                     cam_widget.cam.export_to_png(temp_path)
                     
                     if os.path.exists(temp_path):
+                        # API'ye resmi gönder ve QR sonucunu al
                         with open(temp_path, 'rb') as f:
-                            res = requests.post("https://api.qrserver.com/v1/read-qr-code/", files={'file': f}, timeout=5)
+                            res = requests.post("https://api.qrserver.com/v1/read-qr-code/", files={'file': f}, timeout=7)
                             
                         if res.status_code == 200:
                             res_json = res.json()
-                            parsed_text = res_json[0]['symbol'][0]['data']
+                            symbol = res_json[0].get('symbol', [{}])[0]
+                            parsed_text = symbol.get('data')
+                            error = symbol.get('error')
+                            
                             if parsed_text:
                                 self.txt_scan.text = parsed_text
                                 popup.dismiss()
@@ -374,7 +369,7 @@ class AnaStokEkrani(Screen):
                 except Exception as e:
                     print(f"QR Okuma Hatası: {e}")
                     
-            btn_tara.text = "Tekrar Dene"
+            btn_tara.text = "Bulunamadı (Tekrar Deneyin)"
 
         btn_tara.bind(on_release=qr_tara_islem)
         btn_kapat.bind(on_release=popup.dismiss)
