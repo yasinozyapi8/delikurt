@@ -19,10 +19,14 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Kivy-iOS Toolchain Yükle
+      - name: Kivy-iOS Toolchain ve Bağımlılıkları Yükle
         run: |
           pip install --upgrade pip
           pip install kivy-ios Cython pillow requests
+
+      - name: iOS Giriş Dosyasını Hazırla
+        run: |
+          cp app_mobile_ios.py main.py
 
       - name: Xcode Projesi Oluştur (kivy-ios)
         run: |
