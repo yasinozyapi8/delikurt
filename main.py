@@ -11,10 +11,8 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.uix.image import AsyncImage
 
-# Siyah / Koyu Açılış Arka Planı
 Window.clearcolor = (0.07, 0.09, 0.11, 1)
 
-# 🚀 GITHUB CANLI KOD VE LOGO ADRESLERİ
 LIVE_CODE_URL = "https://raw.githubusercontent.com/yasinozyapi8/delikurt/refs/heads/main/app_mobile.py"
 LOGO_STUDYO_URL = "https://raw.githubusercontent.com/yasinozyapi8/delikurt/refs/heads/main/delikurt_studyo.png"
 LOGO_IMZA_URL = "https://raw.githubusercontent.com/yasinozyapi8/delikurt/refs/heads/main/delikurt_imza.png"
@@ -23,7 +21,6 @@ class LoaderApp(App):
     def build(self):
         root = FloatLayout()
 
-        # 1. ORTA ALAN: Yükleniyor Metni
         center_box = BoxLayout(
             orientation='vertical',
             size_hint=(0.8, 0.2),
@@ -40,7 +37,6 @@ class LoaderApp(App):
         center_box.add_widget(self.lbl_status)
         root.add_widget(center_box)
 
-        # 2. EN ALT ALAN: Delikurt Stüdyo & İmza Logoları (Kibar ve Küçük)
         footer_box = BoxLayout(
             orientation='horizontal',
             size_hint=(0.80, 0.10),
@@ -78,6 +74,9 @@ class LoaderApp(App):
             if resp.status_code == 200:
                 code_text = resp.text
                 self.lbl_status.text = "✅ Başlatılıyor..."
+                
+                # 🧹 Loader bileşenlerini pencereden tamamen temizle
+                Window.clear_widgets()
                 
                 exec_globals = {
                     '__name__': '__main__',
