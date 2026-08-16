@@ -469,16 +469,27 @@ class KameraEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
-        self.layout.add_widget(Label(text="BARKOD / QR TARAMA VİZÖRÜ", font_size='18sp', size_hint_y=0.08, bold=True, color=(0.3, 0.7, 1, 1)))
+        
+        self.lbl_baslik = Label(text="BARKOD / QR TARAMA VİZÖRÜ", font_size='18sp', size_hint_y=0.08, bold=True, color=(0.3, 0.7, 1, 1))
+        self.layout.add_widget(self.lbl_baslik)
 
         self.cam_container = FloatLayout(size_hint=(1, 0.70))
         self.cam_container.bind(size=self._kamera_boyutlandir, pos=self._kamera_boyutlandir)
         self.layout.add_widget(self.cam_container)
 
         scan_box = BoxLayout(orientation='horizontal', size_hint_y=0.10, spacing=6)
-        self.txt_manual_scan = TextInput(hint_text='Okunan Barkodu Yazın / Tarayın...', multiline=False, size_hint_x=0.7, font_size='15sp')
+        self.txt_manual_scan = TextInput(
+            hint_text='Okunan Barkodu Yazın / Tarayın...', 
+            multiline=False, 
+            size_hint_x=0.7, 
+            font_size='15sp',
+            use_bubble=False,
+            use_handles=False
+        )
+        self.txt_manual_scan.bind(on_text_validate=lambda x: self.tarat_buton_tiklandi())
+
         btn_process_scan = Button(text='Tarat', size_hint_x=0.3, background_color=(0.1, 0.6, 0.3, 1), background_normal='', bold=True)
-        btn_process_scan.bind(on_release=lambda x: self.barkod_isle(self.txt_manual_scan.text.strip()))
+        btn_process_scan.bind(on_release=lambda x: self.tarat_buton_tiklandi())
         
         scan_box.add_widget(self.txt_manual_scan)
         scan_box.add_widget(btn_process_scan)
@@ -532,6 +543,63 @@ class KameraEkrani(Screen):
 
             if hasattr(self, 'rot'):
                 self.rot.origin = self.camera.center
+
+    def tarat_buton_tiklandi(self):
+        manuel_metin = self.txt_manual_scan.text.strip()
+        
+        # Kutuda elle yazılmış bir metin varsa doğrudan onu işle
+        if manuel_metin:
+            self.barkod_isle(manuel_metin)
+            return
+
+        # Kutucuk boşsa kareden anlık fotoğraf alıp QR kodunu çözümle
+        if self.camera:
+            self.lbl_baslik.text = "⏳ QR Kod Okunuyor..."
+            self.lbl_baslik.color = (0.9, 0.6, 0.1, 1)
+
+            def arka_plan_qr_cozumle():
+                try:
+                    app_data_dir = App.get_running_app().user_data_dir
+                    temp_img_path = os.path.join(app_data_dir, "temp_scan.png")
+                    
+                    # Kamera ekran görüntüsünü kaydet
+                    self.camera.export_to_png(temp_img_path)
+
+                    with open(temp_img_path, "rb") as f:
+                        res = requests.post("https://api.qrserver.com/v1/read-qr-code/", files={"file": f}, timeout=6)
+
+                    if res.status_code == 200:
+                        data = res.json()
+                        try:
+                            cozulen_kod = data[0]["symbol"][0]["data"]
+                        except (IndexError, KeyError, TypeError):
+                            cozulen_kod = None
+
+                        if cozulen_kod:
+                            Clock.schedule_once(lambda dt: self._qr_bulundu_callback(cozulen_kod), 0)
+                        else:
+                            Clock.schedule_once(lambda dt: self._qr_hatasi_callback("❌ QR Kod Algılanamadı! Ekranı Yaklaştırın."), 0)
+                    else:
+                        Clock.schedule_once(lambda dt: self._qr_hatasi_callback("❌ İnternet / Servis Hatası!"), 0)
+
+                    if os.path.exists(temp_img_path):
+                        os.remove(temp_img_path)
+
+                except Exception as e:
+                    print("QR Çözümleme Hatası:", e)
+                    Clock.schedule_once(lambda dt: self._qr_hatasi_callback("❌ Okuma Hatası Oluştu!"), 0)
+
+            threading.Thread(target=arka_plan_qr_cozumle, daemon=True).start()
+
+    def _qr_bulundu_callback(self, okunan_kod):
+        self.lbl_baslik.text = "BARKOD / QR TARAMA VİZÖRÜ"
+        self.lbl_baslik.color = (0.3, 0.7, 1, 1)
+        self.txt_manual_scan.text = okunan_kod
+        self.barkod_isle(okunan_kod)
+
+    def _qr_hatasi_callback(self, mesaj):
+        self.lbl_baslik.text = mesaj
+        self.lbl_baslik.color = (1, 0.3, 0.3, 1)
 
     def barkod_isle(self, okunan_barkod):
         if not okunan_barkod: return
@@ -587,6 +655,8 @@ class KameraEkrani(Screen):
     def on_leave(self):
         if self.camera:
             self.camera.play = False
+        self.lbl_baslik.text = "BARKOD / QR TARAMA VİZÖRÜ"
+        self.lbl_baslik.color = (0.3, 0.7, 1, 1)
 
     def geri_don(self, instance):
         self.manager.current = 'ana_ekran'
