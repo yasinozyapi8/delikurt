@@ -23,12 +23,11 @@ FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/d
 
 
 class RotatedCamera(Camera):
-    """Kamera açısını ve oranını düzelten sınıf"""
+    """Oranları Koruyan ve Alanı Tam Dolduran Açı Düzeltmeli Kamera"""
     def __init__(self, angle=-90, **kwargs):
         super().__init__(**kwargs)
-        # Görüntünün esnemesini önlemek için ratio'yu koruyoruz
-        self.allow_stretch = False
-        self.keep_ratio = True 
+        self.allow_stretch = True
+        self.keep_ratio = True  # Görüntü bozulmasını engeller
         with self.canvas.before:
             PushMatrix()
             self.rot = Rotate(angle=angle, axis=(0, 0, 1))
@@ -41,16 +40,16 @@ class RotatedCamera(Camera):
 
 
 class CameraScanWidget(FloatLayout):
+    """Yeşil Çerçevesi Kamera Görüntüsünün İçine Tam Oturan Görünüm"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
         try:
-            # Çözünürlüğü standart 640x480'e çektik (Daha kararlı)
             self.cam = RotatedCamera(
                 angle=-90, 
                 play=True, 
                 resolution=(640, 480), 
-                size_hint=(1, 1), 
+                size_hint=(0.95, 0.95), 
                 pos_hint={'center_x': 0.5, 'center_y': 0.5}
             )
             self.add_widget(self.cam)
@@ -58,17 +57,35 @@ class CameraScanWidget(FloatLayout):
             self.cam = None
             self.add_widget(Label(text="Kamera başlatılamadı.", pos_hint={'center_x': 0.5, 'center_y': 0.5}))
 
+        # Yeşil Odak Çerçevesi
         with self.canvas.after:
             Color(0.12, 0.85, 0.38, 1) # Neon Yeşil
             self.line = Line(width=4)
             
         self.bind(pos=self.update_frame, size=self.update_frame)
+        if self.cam:
+            self.cam.bind(pos=self.update_frame, size=self.update_frame)
+
+        lbl = Label(
+            text="QR / Barkodu Yeşil Çerçeveye Hizalayın",
+            size_hint=(1, None),
+            height='35dp',
+            pos_hint={'top': 0.99, 'center_x': 0.5},
+            bold=True,
+            color=(1, 1, 1, 0.95),
+            font_size='16sp'
+        )
+        self.add_widget(lbl)
 
     def update_frame(self, *args):
+        if not hasattr(self, 'cam') or not self.cam:
+            return
         cx, cy = self.center
-        # Çerçeveyi kamera görüntüsü içinde daha dengeli boyutlandırdık
-        w = min(self.width * 0.7, self.height * 0.7)
+        # Çerçeve boyutunu doğrudan kamera beslemesinin kendi en/boy oranına bağladık
+        cam_min_side = min(self.cam.width, self.cam.height)
+        w = max(180, cam_min_side * 0.65) # Yeşil çerçeve kameranın tam içine sığar
         self.line.rectangle = (cx - w/2, cy - w/2, w, w)
+
 
 class FirestoreManager:
     @staticmethod
@@ -341,7 +358,6 @@ class AnaStokEkrani(Screen):
                     cam_widget.cam.export_to_png(temp_path)
                     
                     if os.path.exists(temp_path):
-                        # Görüntüyü 90 derece döndürerek dik açıya getir
                         img = Image.open(temp_path)
                         img_rotated = img.rotate(-90, expand=True)
                         
