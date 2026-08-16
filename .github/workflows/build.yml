@@ -68,9 +68,10 @@ jobs:
           python -m pip install --upgrade pip setuptools
           pip install --upgrade buildozer cython==0.29.37
 
-      - name: APK Derle (Buildozer)
+     - name: APK Derle (Buildozer)
         env:
           JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
+          PIP_NO_BINARY: ":all:"
         run: |
           buildozer -v android debug
 
