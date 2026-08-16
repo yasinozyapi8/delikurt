@@ -4,55 +4,109 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Stok Takip Sistemi</title>
-    <!-- iOS PWA Meta Etiketleri -->
+    <!-- iOS PWA Ayarları -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Stok Takip">
     <link rel="apple-touch-icon" href="app_icon.png">
+    <!-- QR/Barkod Kamera Kütüphanesi -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        body { background-color: #000; color: #fff; padding: 15px; display: flex; flex-direction: column; min-height: 100vh; }
-        h1 { color: #4ba3f0; text-align: center; font-size: 20px; margin-bottom: 15px; font-weight: bold; }
-        .search-box { display: flex; gap: 8px; margin-bottom: 15px; }
-        input[type="text"] { flex: 1; padding: 12px; background: #111; border: 1px solid #333; border-radius: 8px; color: #fff; font-size: 15px; outline: none; }
-        button { padding: 12px 16px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #fff; font-size: 14px; }
-        .btn-ara { background: #3388d6; }
-        .btn-ekle { background: #1fbd53; width: 100%; padding: 15px; font-size: 16px; margin-top: auto; border-radius: 10px; }
-        .card-list { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: calc(100vh - 180px); }
-        .card { background: #2e3847; padding: 12px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
-        .card-info { font-size: 13px; line-height: 1.4; color: #e0e0e0; }
-        .card-btns { display: flex; flex-direction: column; gap: 5px; }
-        .btn-inc { background: #1fbd53; padding: 8px 14px; font-size: 16px; }
-        .btn-dec { background: #d93834; padding: 8px 14px; font-size: 16px; }
-        /* Modal Popup */
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; }
-        .modal-content { background: #1e1e1e; padding: 20px; border-radius: 12px; width: 85%; text-align: center; }
-        .modal-btns { display: flex; gap: 10px; margin-top: 15px; }
+        body { background-color: #000; color: #fff; padding: 12px; display: flex; flex-direction: column; min-height: 100vh; }
+        h1 { color: #4ba3f0; text-align: center; font-size: 20px; margin-bottom: 12px; font-weight: bold; }
+        
+        .search-box { display: flex; gap: 6px; margin-bottom: 12px; }
+        input[type="text"], input[type="number"] { padding: 10px; background: #111; border: 1px solid #333; border-radius: 8px; color: #fff; font-size: 14px; outline: none; }
+        .search-box input { flex: 0.6; }
+        
+        button { border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #fff; font-size: 14px; padding: 10px; }
+        .btn-ara { background: #3388d6; flex: 0.2; }
+        .btn-kamera { background: #d9731a; flex: 0.2; font-size: 12px; }
+        .btn-ekle { background: #1fbd53; width: 100%; padding: 14px; font-size: 16px; margin-top: auto; border-radius: 8px; }
+        
+        .card-list { display: flex; flex-direction: column; gap: 8px; flex: 1; overflow-y: auto; max-height: calc(100vh - 240px); margin-bottom: 10px; }
+        .card { background: #2e3847; padding: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .card-info { font-size: 13px; line-height: 1.4; color: #e0e0e0; flex: 0.75; cursor: pointer; }
+        .card-btns { display: flex; flex-direction: column; gap: 4px; flex: 0.25; }
+        .btn-inc { background: #1fbd53; font-size: 16px; padding: 6px; }
+        .btn-dec { background: #d93834; font-size: 16px; padding: 6px; }
+        
+        .footer-branding { text-align: center; margin-top: 10px; margin-bottom: 5px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .footer-branding img { max-height: 30px; object-fit: contain; }
+
+        /* Popuplar / Modallar */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; z-index: 999; }
+        .modal-content { background: #1e1e1e; padding: 18px; border-radius: 12px; width: 90%; max-width: 400px; text-align: center; display: flex; flex-direction: column; gap: 10px; max-height: 90vh; overflow-y: auto; }
+        .modal-content input { width: 100%; }
+        .modal-btns { display: flex; gap: 8px; margin-top: 5px; }
+        #reader { width: 100%; background: #000; border-radius: 8px; overflow: hidden; }
     </style>
 </head>
 <body>
 
     <h1>STOK TAKİP SİSTEMİ</h1>
 
+    <!-- Arama ve Kamera Alanı -->
     <div class="search-box">
         <input type="text" id="searchInput" placeholder="Barkod veya Parça Ara..." oninput="filtrele()">
+        <button class="btn-ara" onclick="filtrele()">Ara</button>
+        <button class="btn-kamera" onclick="kameraAc()">📷 Kamera</button>
     </div>
 
+    <!-- Stok Kartları Listesi -->
     <div class="card-list" id="stokListesi">
         <p style="text-align:center; color:#888;">Yükleniyor...</p>
     </div>
 
-    <!-- Miktar Modal -->
+    <!-- Alt Ekle Butonu ve Marka Alanı -->
+    <button class="btn-ekle" onclick="yeniParcaModalAc()">+ Yeni Yedek Parça Ekle</button>
+    
+    <div class="footer-branding">
+        <img src="delikurt_studyo.png" alt="Delikurt Stüdyo" onerror="this.style.display='none'">
+        <img src="delikurt_imza.png" alt="İmza" onerror="this.style.display='none'">
+    </div>
+
+    <!-- Miktar Artır/Azalt Popup -->
     <div id="stokModal" class="modal">
         <div class="modal-content">
-            <h3 id="modalParcaAdi" style="margin-bottom:10px;">-</h3>
-            <p id="modalMevcutStok" style="margin-bottom:15px; color:#aaa;">-</p>
-            <input type="number" id="txtMiktar" value="1" style="width:80%; text-align:center; font-size:20px; padding:8px; margin-bottom:15px;">
+            <h3 id="modalParcaAdi">-</h3>
+            <p id="modalMevcutStok" style="color:#aaa;">-</p>
+            <input type="number" id="txtMiktar" value="1" style="text-align:center; font-size:18px;">
             <div class="modal-btns">
-                <button class="btn-inc" style="flex:1" onclick="stokGuncelle('artir')">➕ Artır</button>
-                <button class="btn-dec" style="flex:1" onclick="stokGuncelle('azalt')">➖ Azalt</button>
+                <button class="btn-inc" style="flex:1" onclick="stokGuncelle('artir')">➕ Stok Artır</button>
+                <button class="btn-dec" style="flex:1" onclick="stokGuncelle('azalt')">➖ Stok Azalt</button>
             </div>
-            <button onclick="modalKapat()" style="background:#555; width:100%; margin-top:10px;">İptal</button>
+            <button onclick="modalKapat('stokModal')" style="background:#555;">İptal</button>
+        </div>
+    </div>
+
+    <!-- Kamera Scanner Popup -->
+    <div id="kameraModal" class="modal">
+        <div class="modal-content">
+            <h3>QR / Barkod Tara</h3>
+            <div id="reader"></div>
+            <button onclick="kameraKapat()" style="background:#d93834;">Kapat</button>
+        </div>
+    </div>
+
+    <!-- Parça Ekle / Düzenle / Sil Popup -->
+    <div id="parcaFormModal" class="modal">
+        <div class="modal-content">
+            <h3 id="formBaslik">YENİ YEDEK PARÇA EKLE</h3>
+            <input type="text" id="formAd" placeholder="Parça Adı">
+            <input type="text" id="formKod" placeholder="Parça Kodu (Doküman ID)">
+            <input type="text" id="formBarkod" placeholder="Barkod / QR">
+            <input type="text" id="formKategori" placeholder="Kategori">
+            <input type="text" id="formRaf" placeholder="Raf Konumu">
+            <input type="number" id="formStok" placeholder="Mevcut Stok Adedi">
+            <input type="number" id="formKritik" placeholder="Kritik Stok Sınırı">
+            
+            <div class="modal-btns">
+                <button class="btn-inc" style="flex:1" onclick="parcaKaydet()">Kaydet</button>
+                <button id="btnSil" class="btn-dec" style="flex:1; display:none;" onclick="parcaSil()">🗑️ Sil</button>
+            </div>
+            <button onclick="modalKapat('parcaFormModal')" style="background:#555;">İptal</button>
         </div>
     </div>
 
@@ -60,6 +114,7 @@
         const FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/databases/(default)/documents/stoklar";
         let tumStoklar = {};
         let seciliDocId = null;
+        let html5QrcodeScanner = null;
 
         async function stoklariGetir() {
             try {
@@ -71,47 +126,54 @@
                         const docId = doc.name.split("/").pop();
                         const fields = doc.fields || {};
                         tumStoklar[docId] = {
+                            doc_id: docId,
                             ad: fields.parca_adi?.stringValue || fields.ad?.stringValue || '-',
                             kod: fields.parca_kodu?.stringValue || fields.kod?.stringValue || docId,
                             barkod: fields.barkod?.stringValue || fields.barkod_no?.stringValue || docId,
+                            kategori: fields.kategori?.stringValue || 'Genel',
                             raf: fields.raf_konumu?.stringValue || fields.raf?.stringValue || '-',
-                            stok: parseInt(fields.stok?.integerValue || fields.stok?.doubleValue || fields.miktar?.integerValue || 0)
+                            stok: parseInt(fields.stok?.integerValue || fields.stok?.doubleValue || fields.miktar?.integerValue || 0),
+                            kritik: parseInt(fields.kritik_stok?.integerValue || fields.kritik_seviye?.integerValue || 5)
                         };
                     });
                 }
                 filtrele();
             } catch (e) {
-                console.error(e);
+                console.error("Veri çekme hatası:", e);
             }
         }
 
         function filtrele() {
-            const q = document.getElementById('searchInput').value.toLowerCase();
+            const q = document.getElementById('searchInput').value.toLowerCase().trim();
             const listEl = document.getElementById('stokListesi');
             listEl.innerHTML = '';
 
+            let sayac = 0;
             Object.keys(tumStoklar).forEach(docId => {
                 const u = tumStoklar[docId];
-                if (q && !u.ad.toLowerCase().includes(q) && !u.kod.toLowerCase().includes(q) && !u.barkod.toLowerCase().includes(q)) return;
+                if (q && !u.ad.toLowerCase().includes(q) && !u.kod.toLowerCase().includes(q) && !u.barkod.toLowerCase().includes(q) && !u.raf.toLowerCase().includes(q)) return;
 
+                sayac++;
                 const card = document.createElement('div');
                 card.className = 'card';
                 card.innerHTML = `
-                    <div class="card-info">
+                    <div class="card-info" onclick="parcaDuzenleModalAc('${docId}')">
                         <strong>Adı:</strong> ${u.ad}<br>
                         <strong>Kod:</strong> ${u.kod} | <strong>Barkod:</strong> ${u.barkod}<br>
                         <strong>Raf:</strong> ${u.raf} | <strong>Stok:</strong> ${u.stok} Adet
                     </div>
                     <div class="card-btns">
-                        <button class="btn-inc" onclick="popupAc('${docId}')">+</button>
-                        <button class="btn-dec" onclick="popupAc('${docId}')">-</button>
+                        <button class="btn-inc" onclick="stokPopupAc('${docId}')">+</button>
+                        <button class="btn-dec" onclick="stokPopupAc('${docId}')">-</button>
                     </div>
                 `;
                 listEl.appendChild(card);
             });
+
+            if (sayac === 0) listEl.innerHTML = '<p style="text-align:center; color:#888; padding:20px;">Kayıt bulunamadı.</p>';
         }
 
-        function popupAc(docId) {
+        function stokPopupAc(docId) {
             seciliDocId = docId;
             const u = tumStoklar[docId];
             document.getElementById('modalParcaAdi').innerText = u.ad;
@@ -119,37 +181,128 @@
             document.getElementById('stokModal').style.display = 'flex';
         }
 
-        function modalKapat() {
-            document.getElementById('stokModal').style.display = 'none';
-        }
-
         async function stokGuncelle(yon) {
             const m = parseInt(document.getElementById('txtMiktar').value) || 1;
             const u = tumStoklar[seciliDocId];
             const yeniStok = Math.max(0, u.stok + (yon === 'artir' ? m : -m));
 
-            const payload = {
-                fields: {
-                    parca_adi: { stringValue: u.ad },
-                    parca_kodu: { stringValue: u.kod },
-                    barkod: { stringValue: u.barkod },
-                    raf_konumu: { stringValue: u.raf },
-                    stok: { integerValue: yeniStok.toString() },
-                    miktar: { integerValue: yeniStok.toString() }
-                }
+            u.stok = yeniStok;
+            await kayitGonder(seciliDocId, u);
+            modalKapat('stokModal');
+            stoklariGetir();
+        }
+
+        function yeniParcaModalAc() {
+            seciliDocId = null;
+            document.getElementById('formBaslik').innerText = "YENİ YEDEK PARÇA EKLE";
+            document.getElementById('formAd').value = '';
+            document.getElementById('formKod').value = '';
+            document.getElementById('formBarkod').value = '';
+            document.getElementById('formKategori').value = '';
+            document.getElementById('formRaf').value = '';
+            document.getElementById('formStok').value = '';
+            document.getElementById('formKritik').value = '';
+            document.getElementById('btnSil').style.display = 'none';
+            document.getElementById('parcaFormModal').style.display = 'flex';
+        }
+
+        function parcaDuzenleModalAc(docId) {
+            seciliDocId = docId;
+            const u = tumStoklar[docId];
+            document.getElementById('formBaslik').innerText = "PARÇA DÜZENLE";
+            document.getElementById('formAd').value = u.ad;
+            document.getElementById('formKod').value = u.kod;
+            document.getElementById('formBarkod').value = u.barkod;
+            document.getElementById('formKategori').value = u.kategori;
+            document.getElementById('formRaf').value = u.raf;
+            document.getElementById('formStok').value = u.stok;
+            document.getElementById('formKritik').value = u.kritik;
+            document.getElementById('btnSil').style.display = 'block';
+            document.getElementById('parcaFormModal').style.display = 'flex';
+        }
+
+        async function parcaKaydet() {
+            const ad = document.getElementById('formAd').value.trim();
+            const kod = document.getElementById('formKod').value.trim();
+            const barkod = document.getElementById('formBarkod').value.trim();
+            const docId = kod || barkod || seciliDocId;
+
+            if (!docId || !ad) { alert("Parça Adı ve Kodu zorunludur."); return; }
+
+            const urunData = {
+                ad: ad,
+                kod: kod,
+                barkod: barkod || kod,
+                kategori: document.getElementById('formKategori').value.trim() || 'Genel',
+                raf: document.getElementById('formRaf').value.trim(),
+                stok: parseInt(document.getElementById('formStok').value) || 0,
+                kritik: parseInt(document.getElementById('formKritik').value) || 5
             };
 
-            await fetch(`${FIRESTORE_URL}/${seciliDocId}`, {
+            await kayitGonder(docId, urunData);
+            modalKapat('parcaFormModal');
+            stoklariGetir();
+        }
+
+        async function parcaSil() {
+            if (!seciliDocId || !confirm("Bu parçayı silmek istediğinize emin misiniz?")) return;
+            await fetch(`${FIRESTORE_URL}/${seciliDocId}`, { method: 'DELETE' });
+            modalKapat('parcaFormModal');
+            stoklariGetir();
+        }
+
+        async function kayitGonder(docId, data) {
+            const payload = {
+                fields: {
+                    parca_adi: { stringValue: data.ad },
+                    ad: { stringValue: data.ad },
+                    parca_kodu: { stringValue: data.kod },
+                    barkod: { stringValue: data.barkod },
+                    barkod_no: { stringValue: data.barkod },
+                    kategori: { stringValue: data.kategori },
+                    raf_konumu: { stringValue: data.raf },
+                    raf: { stringValue: data.raf },
+                    stok: { integerValue: data.stok.toString() },
+                    miktar: { integerValue: data.stok.toString() },
+                    kritik_stok: { integerValue: data.kritik.toString() }
+                }
+            };
+            await fetch(`${FIRESTORE_URL}/${docId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-
-            modalKapat();
-            stoklariGetir();
         }
 
-        // Canlı Senkronizasyon (2.5 Saniyede Bir)
+        function kameraAc() {
+            document.getElementById('kameraModal').style.display = 'flex';
+            html5QrcodeScanner = new Html5Qrcode("reader");
+            html5QrcodeScanner.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                (qrCodeMessage) => {
+                    document.getElementById('searchInput').value = qrCodeMessage;
+                    kameraKapat();
+                    filtrele();
+                },
+                (errorMessage) => {}
+            ).catch(err => console.error("Kamera izni alınamadı.", err));
+        }
+
+        function kameraKapat() {
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.stop().then(() => {
+                    document.getElementById('kameraModal').style.display = 'none';
+                }).catch(() => {
+                    document.getElementById('kameraModal').style.display = 'none';
+                });
+            } else {
+                document.getElementById('kameraModal').style.display = 'none';
+            }
+        }
+
+        function modalKapat(id) { document.getElementById(id).style.display = 'none'; }
+
         setInterval(stoklariGetir, 2500);
         stoklariGetir();
     </script>
