@@ -118,7 +118,7 @@ class StokUygulamasi:
         self.baglantiyi_ve_verileri_baslat()
         
         # Telefon değişikliklerini anlık çekebilmek için 10 saniyede bir otomatik senkronizasyon başlatılır
-        self.root.after(10000, self.otomatik_canli_senkronizasyon)
+        self.root.after(2500, self.otomatik_canli_senkronizasyon)
 
     def uygulamayi_kapat(self):
         try:
@@ -158,7 +158,7 @@ class StokUygulamasi:
     def otomatik_canli_senkronizasyon(self):
         """Telefondan yapılan güncellemeleri 10 saniyede bir arka planda sessizce çeker"""
         self.baglantiyi_ve_verileri_baslat(sessiz=True)
-        self.root.after(10000, self.otomatik_canli_senkronizasyon)
+        self.root.after(2500, self.otomatik_canli_senkronizasyon)
 
     def durum_guncelle(self, metin, renk="#333333"):
         def guncelle():
