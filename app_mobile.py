@@ -1,9 +1,9 @@
 import io
-import kivy
 import requests
 from PIL import Image
 from kivy.app import App
 from kivy.core.window import Window
+from kivy.clock import Clock
 from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
@@ -19,6 +19,36 @@ from kivy.graphics import Color, Rectangle, PushMatrix, Rotate, PopMatrix, Line
 Window.clearcolor = (0.1, 0.12, 0.15, 1)
 
 FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/databases/(default)/documents/stoklar"
+
+
+class LongPressLabel(Label):
+    """Uzun basmayı algılayan metin etiketi"""
+    def __init__(self, **kwargs):
+        self.on_long_press = kwargs.pop('on_long_press', None)
+        super().__init__(**kwargs)
+        self._clock = None
+
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            self._clock = Clock.schedule_once(lambda dt: self._trigger_long_press(), 0.5)
+            return True
+        return super().on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        if self._clock:
+            Clock.unschedule(self._clock)
+            self._clock = None
+        return super().on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        if self._clock:
+            Clock.unschedule(self._clock)
+            self._clock = None
+        return super().on_touch_up(touch)
+
+    def _trigger_long_press(self):
+        if self.on_long_press:
+            self.on_long_press()
 
 
 class RotatedCamera(Camera):
@@ -262,13 +292,16 @@ class AnaStokEkrani(Screen):
             card.bind(pos=lambda instance, value: self._update_rect(instance), size=lambda instance, value: self._update_rect(instance))
 
             info_text = f"Adı: {ad}\nKod: {kod} | Barkod: {barkod}\nRaf: {raf} | Stok: {stok} Adet"
-            lbl_info = Label(
+            
+            # Kartın sol tarafına uzun basma özelliği eklendi
+            lbl_info = LongPressLabel(
                 text=info_text,
                 halign='left',
                 valign='middle',
                 font_size='13sp',
                 size_hint_x=0.75,
-                color=(0.9, 0.9, 0.9, 1)
+                color=(0.9, 0.9, 0.9, 1),
+                on_long_press=lambda u=bilgi: self.parca_duzenle_git(u)
             )
             lbl_info.bind(size=lbl_info.setter('text_size'))
             card.add_widget(lbl_info)
@@ -352,7 +385,6 @@ class AnaStokEkrani(Screen):
                 try:
                     btn_tara.text = "İşleniyor..."
                     
-                    # 1. Kameranın anlık dokusunu doğrudan RAM'den çek
                     tex = cam_widget.cam.texture
                     size = tex.size
                     pixels = tex.pixels
@@ -361,19 +393,14 @@ class AnaStokEkrani(Screen):
                         btn_tara.text = "Kamera Hazır Değil"
                         return
 
-                    # 2. Pikselleri Pillow resmine dönüştür
                     img = Image.frombytes('RGBA', size, pixels)
                     img = img.convert('RGB')
-                    
-                    # 3. Açıyı dikleştirmek için döndür
                     img_rotated = img.rotate(-90, expand=True)
                     
-                    # 4. Bellekte hızlı JPEG'e çevir
                     buffer = io.BytesIO()
                     img_rotated.save(buffer, format="JPEG", quality=80)
                     buffer.seek(0)
                     
-                    # 5. API'ye gönder
                     res = requests.post("https://api.qrserver.com/v1/read-qr-code/", files={'file': ('scan.jpg', buffer, 'image/jpeg')}, timeout=5)
                     
                     if res.status_code == 200:
@@ -394,7 +421,14 @@ class AnaStokEkrani(Screen):
         btn_kapat.bind(on_release=popup.dismiss)
         popup.open()
 
+    def parca_duzenle_git(self, urun_data):
+        parca_ekrani = self.manager.get_screen('parca_ekle')
+        parca_ekrani.duzenle_modu_ac(urun_data)
+        self.manager.current = 'parca_ekle'
+
     def parca_ekle_sayfasina_git(self, instance):
+        parca_ekrani = self.manager.get_screen('parca_ekle')
+        parca_ekrani.yeni_ekle_modu_ac()
         self.manager.current = 'parca_ekle'
 
 
@@ -405,7 +439,7 @@ class ParcaEkleEkrani(Screen):
         
         main_layout = BoxLayout(orientation='vertical', padding=[15, 10, 15, 10], spacing=8)
         
-        title = Label(
+        self.lbl_title = Label(
             text="YENİ YEDEK PARÇA EKLE", 
             font_size='20sp', 
             bold=True, 
@@ -413,7 +447,7 @@ class ParcaEkleEkrani(Screen):
             size_hint_y=None, 
             height='45dp'
         )
-        main_layout.add_widget(title)
+        main_layout.add_widget(self.lbl_title)
         
         scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
         form_layout = BoxLayout(orientation='vertical', spacing=6, size_hint_y=None)
@@ -484,6 +518,24 @@ class ParcaEkleEkrani(Screen):
         main_layout.add_widget(btn_box)
         
         self.add_widget(main_layout)
+
+    def duzenle_modu_ac(self, urun_data):
+        self.lbl_title.text = "PARÇA DÜZENLE"
+        self.txt_ad.text = str(urun_data.get('parca_adi') or urun_data.get('ad') or '')
+        self.txt_kod.text = str(urun_data.get('parca_kodu') or urun_data.get('kod') or urun_data.get('doc_id') or '')
+        self.txt_barkod.text = str(urun_data.get('barkod') or urun_data.get('barkod_no') or '')
+        self.txt_kategori.text = str(urun_data.get('kategori') or 'Genel')
+        self.txt_raf.text = str(urun_data.get('raf_konumu') or urun_data.get('raf') or '')
+        
+        stok_val = urun_data.get('stok') if urun_data.get('stok') is not None else urun_data.get('miktar', 0)
+        self.txt_stok.text = str(stok_val)
+        
+        kritik_val = urun_data.get('kritik_stok') if urun_data.get('kritik_stok') is not None else urun_data.get('kritik_seviye', 5)
+        self.txt_kritik.text = str(kritik_val)
+
+    def yeni_ekle_modu_ac(self):
+        self.lbl_title.text = "YENİ YEDEK PARÇA EKLE"
+        self.formu_temizle()
 
     def parca_kaydet(self, instance):
         kod = self.txt_kod.text.strip()
