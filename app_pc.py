@@ -11,9 +11,10 @@ from datetime import datetime
 import qrcode
 from PIL import Image, ImageTk
 
-# --- FIREBASE WEB API KEY YAPILANDIRMASI (RSA / JWT İMZA YOK) ---
+# --- FIREBASE WEB API KEY YAPILANDIRMASI ---
 PROJECT_ID = "stok-takip-f061b"
-API_KEY = "AIzaSyCxg29J4To7hVgXxHOhAY76oOwDcZqyvRY"  # Firebase'den aldığınız AIzaSy... metnini yapıştırın
+API_KEY = "AIzaSyCxg29J4To7hVgXxHOhAY76oOwDcZqyvRY"
+
 
 def dosya_yolu(goreceli_yol):
     olasi_yollar = [
@@ -45,6 +46,7 @@ def parse_firestore_fields(fields):
             data[key] = list(val_dict.values())[0] if val_dict else ""
     return data
 
+
 def build_firestore_fields(data):
     fields = {}
     for key, val in data.items():
@@ -75,6 +77,8 @@ class FirestoreRESTClient:
         for doc in docs:
             fields = doc.get("fields", {})
             parsed = parse_firestore_fields(fields)
+            doc_id = doc.get("name", "").split("/")[-1]
+            parsed["doc_id"] = doc_id
             result.append(parsed)
         return result
 
@@ -112,6 +116,9 @@ class StokUygulamasi:
         
         self.arayuz_olustur()
         self.baglantiyi_ve_verileri_baslat()
+        
+        # Telefon değişikliklerini anlık çekebilmek için 10 saniyede bir otomatik senkronizasyon başlatılır
+        self.root.after(10000, self.otomatik_canli_senkronizasyon)
 
     def uygulamayi_kapat(self):
         try:
@@ -120,30 +127,38 @@ class StokUygulamasi:
             pass
         os._exit(0)
 
-    def baglantiyi_ve_verileri_baslat(self):
+    def baglantiyi_ve_verileri_baslat(self, sessiz=False):
         def arkaplan_islem():
             try:
-                self.durum_guncelle("⏳ [1/2] Veritabanı bağlantısı kuruluyor...", "#2980b9")
+                if not sessiz:
+                    self.durum_guncelle("⏳ Veriler indiriliyor...", "#2980b9")
+                
                 if not self.client:
                     self.client = FirestoreRESTClient()
 
-                self.durum_guncelle("⏳ [2/2] Veriler indiriliyor...", "#2980b9")
                 self.tum_stoklar = self.client.get_all("stoklar")
 
                 self.root.after(0, self.stok_listele)
                 
                 toplam = len(self.tum_stoklar)
-                if toplam == 0:
-                    self.durum_guncelle("ℹ️ Veritabanı bağlı fakat stok verisi yok.", "#e67e22")
-                else:
-                    self.durum_guncelle(f"✅ Başarılı! Toplam {toplam} parça listelendi.", "#27ae60")
+                if not sessiz:
+                    if toplam == 0:
+                        self.durum_guncelle("ℹ️ Veritabanı bağlı fakat stok verisi yok.", "#e67e22")
+                    else:
+                        self.durum_guncelle(f"✅ Başarılı! Toplam {toplam} parça listelendi.", "#27ae60")
 
             except Exception as e:
-                err_msg = str(e)
-                self.durum_guncelle("❌ Bağlantı Hatası!", "red")
-                self.root.after(0, lambda: messagebox.showerror("Veri Hatası", f"Hata Detayı:\n\n{err_msg}"))
+                if not sessiz:
+                    err_msg = str(e)
+                    self.durum_guncelle("❌ Bağlantı Hatası!", "red")
+                    self.root.after(0, lambda: messagebox.showerror("Veri Hatası", f"Hata Detayı:\n\n{err_msg}"))
 
         threading.Thread(target=arkaplan_islem, daemon=True).start()
+
+    def otomatik_canli_senkronizasyon(self):
+        """Telefondan yapılan güncellemeleri 10 saniyede bir arka planda sessizce çeker"""
+        self.baglantiyi_ve_verileri_baslat(sessiz=True)
+        self.root.after(10000, self.otomatik_canli_senkronizasyon)
 
     def durum_guncelle(self, metin, renk="#333333"):
         def guncelle():
@@ -234,13 +249,19 @@ class StokUygulamasi:
         arama = self.ent_arama.get().strip().lower()
 
         for item in self.tum_stoklar:
-            kod = str(item.get("parca_kodu", "-"))
-            barkod = str(item.get("barkod_no", kod))
-            ad = str(item.get("parca_adi", "-"))
+            kod = str(item.get("parca_kodu") or item.get("doc_id") or "-")
+            barkod = str(item.get("barkod_no") or item.get("barkod") or kod)
+            ad = str(item.get("parca_adi") or item.get("ad") or "-")
             kat = str(item.get("kategori", "Genel"))
-            miktar = int(item.get("miktar", 0))
-            kritik = int(item.get("kritik_seviye", 5))
-            raf = str(item.get("raf_konumu", "Belirtilmedi"))
+            
+            # Telefon ve PC veri isimlerinin ortak uyumu (stok / miktar)
+            miktar = item.get("miktar") if item.get("miktar") is not None else item.get("stok", 0)
+            miktar = int(miktar)
+            
+            kritik = item.get("kritik_seviye") if item.get("kritik_seviye") is not None else item.get("kritik_stok", 5)
+            kritik = int(kritik)
+            
+            raf = str(item.get("raf_konumu") or item.get("raf") or "Belirtilmedi")
 
             if arama:
                 if (arama not in kod.lower() and arama not in ad.lower() and arama not in barkod.lower()):
@@ -293,7 +314,7 @@ class StokUygulamasi:
 
         item_values = self.tablo.item(secili[0])["values"]
         parca_kodu = str(item_values[0])
-        mevcut_data = next((x for x in self.tum_stoklar if str(x.get("parca_kodu")) == parca_kodu), None)
+        mevcut_data = next((x for x in self.tum_stoklar if str(x.get("parca_kodu") or x.get("doc_id")) == parca_kodu), None)
         if not mevcut_data: return
 
         pencere = tk.Toplevel(self.root)
@@ -303,7 +324,7 @@ class StokUygulamasi:
         tk.Label(pencere, text=f"Parça Kodu: {parca_kodu}", font=("Arial", 10, "bold")).pack(pady=10)
         tk.Label(pencere, text="Parça Adı:").pack()
         ent_ad = tk.Entry(pencere, width=30)
-        ent_ad.insert(0, mevcut_data.get("parca_adi", ""))
+        ent_ad.insert(0, mevcut_data.get("parca_adi") or mevcut_data.get("ad") or "")
         ent_ad.pack(pady=5)
 
         tk.Label(pencere, text="Kategori:").pack()
@@ -313,7 +334,7 @@ class StokUygulamasi:
 
         tk.Label(pencere, text="Kritik Stok Seviyesi:").pack()
         ent_kritik = tk.Entry(pencere, width=30)
-        ent_kritik.insert(0, str(mevcut_data.get("kritik_seviye", 5)))
+        ent_kritik.insert(0, str(mevcut_data.get("kritik_seviye") or mevcut_data.get("kritik_stok") or 5))
         ent_kritik.pack(pady=5)
 
         def kaydet():
@@ -331,8 +352,10 @@ class StokUygulamasi:
 
             try:
                 mevcut_data["parca_adi"] = yeni_ad
+                mevcut_data["ad"] = yeni_ad
                 mevcut_data["kategori"] = yeni_kat
                 mevcut_data["kritik_seviye"] = yeni_kritik
+                mevcut_data["kritik_stok"] = yeni_kritik
 
                 self.client.set_doc("stoklar", parca_kodu, mevcut_data)
                 messagebox.showinfo("Başarılı", "Güncellendi.")
@@ -381,14 +404,25 @@ class StokUygulamasi:
                 messagebox.showerror("Hata", "Kodu ve Adı boş bırakmayın!")
                 return
             
+            m_val = int(entries["miktar"].get().strip() or 0)
+            k_val = int(entries["kritik"].get().strip() or 5)
+            barkod_val = entries["barkod"].get().strip() or kod
+            raf_val = entries["raf"].get().strip() or "Belirtilmedi"
+            kat_val = entries["kat"].get().strip() or "Genel"
+
             data = {
                 "parca_kodu": kod,
-                "barkod_no": entries["barkod"].get().strip() or kod,
+                "barkod_no": barkod_val,
+                "barkod": barkod_val,
                 "parca_adi": ad,
-                "kategori": entries["kat"].get().strip() or "Genel",
-                "miktar": int(entries["miktar"].get().strip() or 0),
-                "kritik_seviye": int(entries["kritik"].get().strip() or 5),
-                "raf_konumu": entries["raf"].get().strip() or "Belirtilmedi"
+                "ad": ad,
+                "kategori": kat_val,
+                "miktar": m_val,
+                "stok": m_val,
+                "kritik_seviye": k_val,
+                "kritik_stok": k_val,
+                "raf_konumu": raf_val,
+                "raf": raf_val
             }
 
             try:
@@ -406,28 +440,34 @@ class StokUygulamasi:
         if not secili: return
         item_values = self.tablo.item(secili[0])["values"]
         parca_kodu = str(item_values[0])
-        mevcut_data = next((x for x in self.tum_stoklar if str(x.get("parca_kodu")) == parca_kodu), None)
+        mevcut_data = next((x for x in self.tum_stoklar if str(x.get("parca_kodu") or x.get("doc_id")) == parca_kodu), None)
         if not mevcut_data: return
 
         pencere = tk.Toplevel(self.root)
         pencere.title("Barkod ve Raf Düzenle")
         pencere.geometry("380x250")
 
-        tk.Label(pencere, text=f"Parça: {mevcut_data.get('parca_adi')}\nKod: {parca_kodu}", font=("Arial", 9, "bold")).pack(pady=10)
+        parca_adi_val = mevcut_data.get('parca_adi') or mevcut_data.get('ad')
+        tk.Label(pencere, text=f"Parça: {parca_adi_val}\nKod: {parca_kodu}", font=("Arial", 9, "bold")).pack(pady=10)
         tk.Label(pencere, text="Barkod / QR No:").pack()
         ent_barkod = tk.Entry(pencere, width=28)
-        ent_barkod.insert(0, mevcut_data.get("barkod_no", parca_kodu))
+        ent_barkod.insert(0, mevcut_data.get("barkod_no") or mevcut_data.get("barkod") or parca_kodu)
         ent_barkod.pack(pady=5)
 
         tk.Label(pencere, text="Raf Konumu:").pack(pady=(5, 0))
         ent_raf = tk.Entry(pencere, width=28)
-        ent_raf.insert(0, mevcut_data.get("raf_konumu", ""))
+        ent_raf.insert(0, mevcut_data.get("raf_konumu") or mevcut_data.get("raf") or "")
         ent_raf.pack(pady=5)
 
         def kaydet():
             try:
-                mevcut_data["barkod_no"] = ent_barkod.get().strip() or parca_kodu
-                mevcut_data["raf_konumu"] = ent_raf.get().strip() or "Belirtilmedi"
+                b_val = ent_barkod.get().strip() or parca_kodu
+                r_val = ent_raf.get().strip() or "Belirtilmedi"
+                
+                mevcut_data["barkod_no"] = b_val
+                mevcut_data["barkod"] = b_val
+                mevcut_data["raf_konumu"] = r_val
+                mevcut_data["raf"] = r_val
 
                 self.client.set_doc("stoklar", parca_kodu, mevcut_data)
                 messagebox.showinfo("Başarılı", "Güncellendi.")
@@ -443,11 +483,12 @@ class StokUygulamasi:
         if not secili: return
         item_values = self.tablo.item(secili[0])["values"]
         parca_kodu = str(item_values[0])
-        mevcut_data = next((x for x in self.tum_stoklar if str(x.get("parca_kodu")) == parca_kodu), None)
+        mevcut_data = next((x for x in self.tum_stoklar if str(x.get("parca_kodu") or x.get("doc_id")) == parca_kodu), None)
         if not mevcut_data: return
 
-        parca_adi = mevcut_data.get("parca_adi")
-        mevcut_miktar = int(mevcut_data.get("miktar", 0))
+        parca_adi = mevcut_data.get("parca_adi") or mevcut_data.get("ad")
+        mevcut_miktar = mevcut_data.get("miktar") if mevcut_data.get("miktar") is not None else mevcut_data.get("stok", 0)
+        mevcut_miktar = int(mevcut_miktar)
 
         pencere = tk.Toplevel(self.root)
         pencere.title(f"Stok {'Artır' if islem_tipi == 'arttir' else 'Azalt'}")
@@ -474,6 +515,8 @@ class StokUygulamasi:
 
             try:
                 mevcut_data["miktar"] = yeni_miktar
+                mevcut_data["stok"] = yeni_miktar
+                
                 self.client.set_doc("stoklar", parca_kodu, mevcut_data)
                 
                 hareket_id = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -501,14 +544,26 @@ class StokUygulamasi:
                 eklenen = 0
                 for _, row in df.iterrows():
                     kod = str(row['parca_kodu'])
+                    ad = str(row['parca_adi'])
+                    m_val = int(row.get('miktar', 0))
+                    k_val = int(row.get('kritik_seviye', 5))
+                    b_val = str(row.get('barkod_no', kod))
+                    r_val = str(row.get('raf_konumu', 'Belirtilmedi'))
+                    kat_val = str(row.get('kategori', 'Genel'))
+
                     data = {
                         "parca_kodu": kod,
-                        "barkod_no": str(row.get('barkod_no', kod)),
-                        "parca_adi": str(row['parca_adi']),
-                        "kategori": str(row.get('kategori', 'Genel')),
-                        "miktar": int(row.get('miktar', 0)),
-                        "kritik_seviye": int(row.get('kritik_seviye', 5)),
-                        "raf_konumu": str(row.get('raf_konumu', 'Belirtilmedi'))
+                        "barkod_no": b_val,
+                        "barkod": b_val,
+                        "parca_adi": ad,
+                        "ad": ad,
+                        "kategori": kat_val,
+                        "miktar": m_val,
+                        "stok": m_val,
+                        "kritik_seviye": k_val,
+                        "kritik_stok": k_val,
+                        "raf_konumu": r_val,
+                        "raf": r_val
                     }
                     self.client.set_doc("stoklar", kod, data)
                     eklenen += 1
