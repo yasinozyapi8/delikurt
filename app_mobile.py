@@ -1,4 +1,5 @@
 import kivy
+import requests
 from kivy.app import App
 from kivy.core.window import Window
 from kivy.uix.screenmanager import ScreenManager, Screen
@@ -10,43 +11,78 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 
-# Uygulama Genel Koyu Arka Plan Rengi
 Window.clearcolor = (0.1, 0.12, 0.15, 1)
 
-# Örnek Stok Veritabanı
-stok_veritabani = {
-    "8690000000001": {
-        "ad": "Rulman 6204", 
-        "kod": "PRC-001", 
-        "kategori": "Rulman", 
-        "raf": "A-12", 
-        "stok": 15, 
-        "kritik": 5
-    },
-    "8690000000002": {
-        "ad": "Yağ Filtresi H-12", 
-        "kod": "PRC-002", 
-        "kategori": "Filtre", 
-        "raf": "B-05", 
-        "stok": 8, 
-        "kritik": 3
-    }
-}
+# --- FIREBASE BİLGİLERİNİZ ---
+FIREBASE_URL = "https://stok-takip-f061b-default-rtdb.firebaseio.com/stoklar"
+FIREBASE_API_KEY = "AIzaSyCxg29J4To7hVgXxHOhAY76oOwDcZqyvRY"
+
+
+class FirebaseManager:
+    """API Key ile Anonim Oturum Açma ve Güvenli Veri İşlemleri"""
+    id_token = None
+
+    @classmethod
+    def oturum_ac(cls):
+        """Web API Key kullanarak Firebase Auth üzerinden geçici ID Token alır"""
+        auth_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_API_KEY}"
+        try:
+            res = requests.post(auth_url, json={"returnSecureToken": True}, timeout=5)
+            if res.status_code == 200:
+                cls.id_token = res.json().get("idToken")
+                print("Firebase Oturumu Başarıyla Açıldı.")
+                return True
+            else:
+                print(f"Oturum Açma Hatası: {res.text}")
+                return False
+        except Exception as e:
+            print(f"Oturum Bağlantı Hatası: {e}")
+            return False
+
+    @classmethod
+    def tum_stoklari_getir(cls):
+        if not cls.id_token:
+            if not cls.oturum_ac():
+                return {}
+
+        try:
+            url = f"{FIREBASE_URL}.json?auth={cls.id_token}"
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200 and response.json():
+                return response.json()
+            elif response.status_code == 401:  # Token süresi dolmuşsa yenile
+                cls.oturum_ac()
+                return cls.tum_stoklari_getir()
+            return {}
+        except Exception as e:
+            print(f"Firebase Bağlantı Hatası: {e}")
+            return {}
+
+    @classmethod
+    def urun_kaydet_veya_guncelle(cls, barkod, urun_data):
+        if not cls.id_token:
+            if not cls.oturum_ac():
+                return False
+
+        try:
+            url = f"{FIREBASE_URL}/{barkod}.json?auth={cls.id_token}"
+            response = requests.put(url, json=urun_data, timeout=5)
+            return response.status_code == 200
+        except Exception as e:
+            print(f"Firebase Kayıt Hatası: {e}")
+            return False
 
 
 class AnaStokEkrani(Screen):
-    """Ana Stok Listesi Ekranı"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = 'stok_liste'
         
         main_layout = BoxLayout(orientation='vertical', padding=12, spacing=10)
         
-        # Üst Arama / Barkod Alanı
         scan_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None, height='48dp')
-        
         self.txt_scan = TextInput(
-            hint_text='Barkod No Girin / Okutun...',
+            hint_text='Barkod / QR Girin...',
             multiline=False,
             font_size='16sp',
             size_hint_x=0.72,
@@ -66,9 +102,8 @@ class AnaStokEkrani(Screen):
         scan_box.add_widget(btn_scan)
         main_layout.add_widget(scan_box)
         
-        # Stok Liste Başlığı
         main_layout.add_widget(Label(
-            text="MEVCUT STOK LİSTESİ", 
+            text="GÜVENLİ STOK LİSTESİ", 
             size_hint_y=None, 
             height='30dp', 
             bold=True,
@@ -76,7 +111,6 @@ class AnaStokEkrani(Screen):
             font_size='16sp'
         ))
         
-        # Stok Listesi ScrollView
         scroll = ScrollView()
         self.grid_stok = GridLayout(cols=1, spacing=6, size_hint_y=None)
         self.grid_stok.bind(minimum_height=self.grid_stok.setter('height'))
@@ -84,7 +118,6 @@ class AnaStokEkrani(Screen):
         scroll.add_widget(self.grid_stok)
         main_layout.add_widget(scroll)
         
-        # Manuel Ekleme Butonu
         btn_go_add = Button(
             text='Manuel Yedek Parça Ekle',
             size_hint_y=None,
@@ -104,17 +137,24 @@ class AnaStokEkrani(Screen):
 
     def stok_listesini_yenile(self):
         self.grid_stok.clear_widgets()
-        for barkod, bilgi in stok_veritabani.items():
-            item_box = BoxLayout(orientation='horizontal', size_hint_y=None, height='45dp', padding=5)
-            lbl = Label(
-                text=f"[{barkod}] {bilgi['ad']} | Kat: {bilgi.get('kategori', 'Genel')} | Raf: {bilgi.get('raf', '-')} | Stok: {bilgi['stok']}",
-                halign='left',
-                valign='middle',
-                font_size='14sp'
-            )
-            lbl.bind(size=lbl.setter('text_size'))
-            item_box.add_widget(lbl)
-            self.grid_stok.add_widget(item_box)
+        stoklar = FirebaseManager.tum_stoklari_getir()
+        
+        if not stoklar:
+            self.grid_stok.add_widget(Label(text="Listelenecek ürün bulunamadı veya bağlantı yok.", size_hint_y=None, height='40dp'))
+            return
+
+        for barkod, bilgi in stoklar.items():
+            if isinstance(bilgi, dict):
+                item_box = BoxLayout(orientation='horizontal', size_hint_y=None, height='45dp', padding=5)
+                lbl = Label(
+                    text=f"[{barkod}] {bilgi.get('ad', '-') } | Kat: {bilgi.get('kategori', 'Genel')} | Raf: {bilgi.get('raf', '-')} | Stok: {bilgi.get('stok', 0)}",
+                    halign='left',
+                    valign='middle',
+                    font_size='14sp'
+                )
+                lbl.bind(size=lbl.setter('text_size'))
+                item_box.add_widget(lbl)
+                self.grid_stok.add_widget(item_box)
 
     def barkod_isle(self, instance):
         barkod = self.txt_scan.text.strip()
@@ -127,14 +167,12 @@ class AnaStokEkrani(Screen):
 
 
 class ParcaEkleEkrani(Screen):
-    """Orijinal Koyu Tasarımlı & Üste Hizalı Parça Ekleme Ekranı"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = 'parca_ekle'
         
         main_layout = BoxLayout(orientation='vertical', padding=[15, 10, 15, 10], spacing=8)
         
-        # Sayfa Başlığı (Görseldeki Mavi Renk)
         title = Label(
             text="YENİ YEDEK PARÇA EKLE", 
             font_size='20sp', 
@@ -145,12 +183,10 @@ class ParcaEkleEkrani(Screen):
         )
         main_layout.add_widget(title)
         
-        # Form İçin Kaydırılabilir Alan
         scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
         form_layout = BoxLayout(orientation='vertical', spacing=6, size_hint_y=None)
         form_layout.bind(minimum_height=form_layout.setter('height'))
         
-        # Görseldeki Etiket ve Metin Kutusu Yapısı
         def create_field(label_text, hint_text, is_num=False):
             lbl = Label(
                 text=label_text, 
@@ -180,7 +216,6 @@ class ParcaEkleEkrani(Screen):
             form_layout.add_widget(inp)
             return inp
 
-        # Orijinal Sıralama + Yeni Kategori Alanı
         self.txt_ad = create_field("Parça Adı:", "Örn: Rulman 6204")
         self.txt_kod = create_field("Parça Kodu:", "Örn: PRC-001")
         self.txt_barkod = create_field("Barkod / QR:", "Örn: 86900012345")
@@ -192,7 +227,6 @@ class ParcaEkleEkrani(Screen):
         scroll.add_widget(form_layout)
         main_layout.add_widget(scroll)
         
-        # Alt Butonlar (Yeşil Kaydet / Kırmızı İptal)
         btn_box = BoxLayout(spacing=10, size_hint_y=None, height='60dp')
         
         btn_kaydet = Button(
@@ -229,7 +263,7 @@ class ParcaEkleEkrani(Screen):
         kritik = int(self.txt_kritik.text) if self.txt_kritik.text else 5
         
         if barkod and ad:
-            stok_veritabani[barkod] = {
+            urun_data = {
                 "ad": ad,
                 "kod": kod,
                 "kategori": kategori,
@@ -237,8 +271,9 @@ class ParcaEkleEkrani(Screen):
                 "stok": stok,
                 "kritik": kritik
             }
-            self.formu_temizle()
-            self.manager.current = 'stok_liste'
+            if FirebaseManager.urun_kaydet_veya_guncelle(barkod, urun_data):
+                self.formu_temizle()
+                self.manager.current = 'stok_liste'
 
     def iptal_et(self, instance):
         self.formu_temizle()
@@ -266,18 +301,17 @@ class MobileApp(App):
 
     def process_barcode_scan(self, barcode_data):
         barcode = str(barcode_data).strip()
+        stoklar = FirebaseManager.tum_stoklari_getir()
         
-        if barcode in stok_veritabani:
-            self.show_stock_update_popup(barcode)
+        if barcode in stoklar:
+            self.show_stock_update_popup(barcode, stoklar[barcode])
         else:
             self.parca_ekrani.txt_barkod.text = barcode
             self.sm.current = 'parca_ekle'
 
-    def show_stock_update_popup(self, barcode):
-        urun = stok_veritabani[barcode]
-        
+    def show_stock_update_popup(self, barcode, urun):
         layout = BoxLayout(orientation='vertical', spacing=10, padding=15)
-        layout.add_widget(Label(text=f"Ürün: {urun['ad']}\nMevcut Stok: {urun['stok']}", font_size='16sp'))
+        layout.add_widget(Label(text=f"Ürün: {urun.get('ad', '-')}\nMevcut Stok: {urun.get('stok', 0)}", font_size='16sp'))
         
         qty_input = TextInput(text="1", input_filter="int", multiline=False, font_size='20sp', halign='center')
         layout.add_widget(qty_input)
@@ -295,10 +329,11 @@ class MobileApp(App):
         def update_qty(is_addition):
             try:
                 miktar = int(qty_input.text) if qty_input.text else 0
-                if is_addition:
-                    urun['stok'] += miktar
-                else:
-                    urun['stok'] = max(0, urun['stok'] - miktar)
+                mevcut = urun.get('stok', 0)
+                yeni_stok = (mevcut + miktar) if is_addition else max(0, mevcut - miktar)
+                
+                urun['stok'] = yeni_stok
+                FirebaseManager.urun_kaydet_veya_guncelle(barcode, urun)
                 
                 self.stok_ekrani.stok_listesini_yenile()
                 popup.dismiss()
