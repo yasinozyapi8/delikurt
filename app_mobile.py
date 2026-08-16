@@ -4,7 +4,7 @@ from PIL import Image
 from kivy.app import App
 from kivy.core.window import Window
 from kivy.clock import Clock
-from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.uix.screenmanager import ScreenManager, Screen, FadeTransition
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.gridlayout import GridLayout
@@ -14,11 +14,94 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 from kivy.uix.camera import Camera
+from kivy.uix.image import Image as KivyImage
 from kivy.graphics import Color, Rectangle, PushMatrix, Rotate, PopMatrix, Line
 
-Window.clearcolor = (0.1, 0.12, 0.15, 1)
+Window.clearcolor = (0.0, 0.0, 0.0, 1) # Tam Siyah Arka Plan
 
 FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/databases/(default)/documents/stoklar"
+
+
+class SplashEkrani(Screen):
+    """Özel Tasarım Açılış ve Yükleme Ekranı"""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = 'splash'
+        
+        layout = FloatLayout()
+        
+        # 1. ORTA ALAN: Uygulama Logosu + Stok Takip Sistemi Yazısı
+        center_box = BoxLayout(
+            orientation='horizontal',
+            size_hint=(0.85, None),
+            height='90dp',
+            pos_hint={'center_x': 0.5, 'center_y': 0.52},
+            spacing=15
+        )
+        
+        # Uygulama Logosu
+        app_logo = KivyImage(
+            source='app_icon.png',
+            size_hint=(None, 1),
+            width='90dp',
+            allow_stretch=True,
+            keep_ratio=True
+        )
+        
+        # Başlık Metni
+        title_lbl = Label(
+            text="Stok Takip\nSistemi",
+            font_size='26sp',
+            bold=True,
+            halign='left',
+            valign='middle',
+            color=(1, 1, 1, 1)
+        )
+        title_lbl.bind(size=title_lbl.setter('text_size'))
+        
+        center_box.add_widget(app_logo)
+        center_box.add_widget(title_lbl)
+        layout.add_widget(center_box)
+        
+        # 2. ALT ALAN: Delikurt Stüdyo Logo ve İmza
+        bottom_box = BoxLayout(
+            orientation='vertical',
+            size_hint=(0.8, None),
+            height='100dp',
+            pos_hint={'center_x': 0.5, 'y': 0.04},
+            spacing=5
+        )
+        
+        # Delikurt Stüdyo Logosu
+        delikurt_logo = KivyImage(
+            source='delikurt_studyo.png',
+            size_hint=(1, None),
+            height='55dp',
+            allow_stretch=True,
+            keep_ratio=True
+        )
+        
+        # Delikurt İmza
+        delikurt_imza = KivyImage(
+            source='delikurt_imza.png',
+            size_hint=(1, None),
+            height='35dp',
+            allow_stretch=True,
+            keep_ratio=True
+        )
+        
+        bottom_box.add_widget(delikurt_logo)
+        bottom_box.add_widget(delikurt_imza)
+        layout.add_widget(bottom_box)
+        
+        self.add_widget(layout)
+
+    def on_enter(self):
+        # 2.5 Saniye Sonra Ana Stok Listesine Yumuşak Geçiş Yap
+        Clock.schedule_once(self.ana_ekrana_gec, 2.5)
+
+    def ana_ekrana_gec(self, dt):
+        self.manager.current = 'stok_liste'
 
 
 class LongPressLabel(Label):
@@ -87,7 +170,7 @@ class CameraScanWidget(FloatLayout):
             self.add_widget(Label(text="Kamera başlatılamadı.", pos_hint={'center_x': 0.5, 'center_y': 0.5}))
 
         with self.canvas.after:
-            Color(0.12, 0.85, 0.38, 1) # Neon Yeşil
+            Color(0.12, 0.85, 0.38, 1)
             self.line = Line(width=4)
             
         self.bind(pos=self.update_frame, size=self.update_frame)
@@ -293,7 +376,6 @@ class AnaStokEkrani(Screen):
 
             info_text = f"Adı: {ad}\nKod: {kod} | Barkod: {barkod}\nRaf: {raf} | Stok: {stok} Adet"
             
-            # Kartın sol tarafına uzun basma özelliği eklendi
             lbl_info = LongPressLabel(
                 text=info_text,
                 halign='left',
@@ -583,10 +665,15 @@ class ParcaEkleEkrani(Screen):
 
 class MobileApp(App):
     def build(self):
-        self.sm = ScreenManager()
+        # Ekran geçişi yumuşatıldı
+        self.sm = ScreenManager(transition=FadeTransition(duration=0.4))
+        
+        self.splash_ekrani = SplashEkrani()
         self.stok_ekrani = AnaStokEkrani()
         self.parca_ekrani = ParcaEkleEkrani()
         
+        # İlk önce splash ekranı eklendi (Uygulama buradan açılacak)
+        self.sm.add_widget(self.splash_ekrani)
         self.sm.add_widget(self.stok_ekrani)
         self.sm.add_widget(self.parca_ekrani)
         return self.sm
