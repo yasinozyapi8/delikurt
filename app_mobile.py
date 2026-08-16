@@ -9,20 +9,18 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
-from kivy.uix.popup import Popup
+from kivy.graphics import Color, Rectangle
 
+# Orijinal Koyu Arka Plan
 Window.clearcolor = (0.1, 0.12, 0.15, 1)
 
-# Cloud Firestore REST API Bağlantısı (stok-takip-f061b projesi için)
+# Firestore REST API Bağlantısı
 FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/databases/(default)/documents/stoklar"
 
 
 class FirestoreManager:
-    """Firestore REST API Veri Dönüştürücü ve Yönetici"""
-
     @staticmethod
     def _parse_firestore_doc(doc):
-        """Firestore JSON formatını standart Python sözlüğüne çevirir"""
         fields = doc.get("fields", {})
         data = {}
         for key, val in fields.items():
@@ -33,14 +31,12 @@ class FirestoreManager:
             elif "doubleValue" in val:
                 data[key] = float(val["doubleValue"])
         
-        # Doküman ID'sini al (Örn: BV-1430)
         doc_id = doc.get("name", "").split("/")[-1]
         data["doc_id"] = doc_id
         return doc_id, data
 
     @staticmethod
     def _build_firestore_fields(data):
-        """Python sözlüğünü Firestore JSON formatına dönüştürür"""
         fields = {}
         for key, val in data.items():
             if isinstance(val, int):
@@ -53,7 +49,6 @@ class FirestoreManager:
 
     @classmethod
     def tum_stoklari_getir(cls):
-        """Firestore 'stoklar' koleksiyonundaki tüm belgeleri çeker"""
         try:
             res = requests.get(FIRESTORE_URL, timeout=5)
             if res.status_code == 200:
@@ -61,9 +56,7 @@ class FirestoreManager:
                 stok_dict = {}
                 for doc in docs:
                     doc_id, data = cls._parse_firestore_doc(doc)
-                    # Barkod veya Parça Kodu anahtar olarak kullanılır
-                    barkod_key = data.get("barkod") or data.get("parca_kodu") or doc_id
-                    stok_dict[barkod_key] = data
+                    stok_dict[doc_id] = data
                 return stok_dict
             return {}
         except Exception as e:
@@ -72,7 +65,6 @@ class FirestoreManager:
 
     @classmethod
     def urun_kaydet_veya_guncelle(cls, doc_id, urun_data):
-        """Ürünü Firestore üzerine kaydeder veya günceller (PATCH)"""
         try:
             url = f"{FIRESTORE_URL}/{doc_id}"
             payload = cls._build_firestore_fields(urun_data)
@@ -88,55 +80,74 @@ class AnaStokEkrani(Screen):
         super().__init__(**kwargs)
         self.name = 'stok_liste'
         
-        main_layout = BoxLayout(orientation='vertical', padding=12, spacing=10)
+        main_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
         
-        # Arama / Barkod Alanı
-        scan_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None, height='48dp')
+        # Üst Başlık
+        title = Label(
+            text="STOK TAKİP SİSTEMİ", 
+            font_size='22sp', 
+            bold=True, 
+            color=(0.3, 0.65, 0.95, 1),
+            size_hint_y=None, 
+            height='40dp'
+        )
+        main_layout.add_widget(title)
+        
+        # Arama + Kamera Üst Barı
+        scan_box = BoxLayout(orientation='horizontal', spacing=5, size_hint_y=None, height='50dp')
+        
         self.txt_scan = TextInput(
-            hint_text='Barkod / Parça Kodu Girin...',
+            hint_text='Barkod veya Parça Ara...',
             multiline=False,
             font_size='16sp',
-            size_hint_x=0.72,
-            background_color=(0.9, 0.9, 0.9, 1)
+            size_hint_x=0.6,
+            background_color=(0.05, 0.05, 0.05, 1),
+            foreground_color=(1, 1, 1, 1),
+            padding=[10, 12, 10, 10]
         )
-        btn_scan = Button(
-            text='İşle',
-            size_hint_x=0.28,
+        
+        btn_ara = Button(
+            text='Ara',
+            size_hint_x=0.2,
             background_normal='',
             background_color=(0.2, 0.55, 0.85, 1),
             bold=True,
             font_size='16sp'
         )
-        btn_scan.bind(on_release=self.barkod_isle)
+        btn_ara.bind(on_release=self.barkod_isle)
+        
+        btn_kamera = Button(
+            text='📷 Kamera',
+            size_hint_x=0.2,
+            background_normal='',
+            background_color=(0.85, 0.45, 0.1, 1),
+            bold=True,
+            font_size='15sp'
+        )
+        btn_kamera.bind(on_release=self.kamera_baslat)
         
         scan_box.add_widget(self.txt_scan)
-        scan_box.add_widget(btn_scan)
+        scan_box.add_widget(btn_ara)
+        scan_box.add_widget(btn_kamera)
         main_layout.add_widget(scan_box)
         
-        main_layout.add_widget(Label(
-            text="FIRESTORE STOK LİSTESİ", 
-            size_hint_y=None, 
-            height='30dp', 
-            bold=True,
-            color=(0.3, 0.7, 1, 1),
-            font_size='16sp'
-        ))
-        
+        # Stok Kartları ScrollView
         scroll = ScrollView()
-        self.grid_stok = GridLayout(cols=1, spacing=6, size_hint_y=None)
+        self.grid_stok = GridLayout(cols=1, spacing=8, size_hint_y=None)
         self.grid_stok.bind(minimum_height=self.grid_stok.setter('height'))
         
         scroll.add_widget(self.grid_stok)
         main_layout.add_widget(scroll)
         
+        # Alt Yeşil Buton: + Yeni Yedek Parça Ekle
         btn_go_add = Button(
-            text='Manuel Yedek Parça Ekle',
+            text='+ Yeni Yedek Parça Ekle',
             size_hint_y=None,
-            height='50dp',
+            height='55dp',
             background_normal='',
-            background_color=(0.2, 0.25, 0.3, 1),
+            background_color=(0.12, 0.68, 0.32, 1),
             bold=True,
-            font_size='16sp'
+            font_size='18sp'
         )
         btn_go_add.bind(on_release=self.parca_ekle_sayfasina_git)
         main_layout.add_widget(btn_go_add)
@@ -146,38 +157,98 @@ class AnaStokEkrani(Screen):
     def on_enter(self):
         self.stok_listesini_yenile()
 
-    def stok_listesini_yenile(self):
+    def stok_listesini_yenile(self, arama_metni=""):
         self.grid_stok.clear_widgets()
         stoklar = FirestoreManager.tum_stoklari_getir()
         
         if not stoklar:
-            self.grid_stok.add_widget(Label(text="Firestore'da kayıtlı ürün bulunamadı.", size_hint_y=None, height='40dp'))
+            self.grid_stok.add_widget(Label(text="Kayıtlı ürün bulunamadı.", size_hint_y=None, height='40dp'))
             return
 
-        for key, bilgi in stoklar.items():
-            item_box = BoxLayout(orientation='horizontal', size_hint_y=None, height='45dp', padding=5)
-            
-            # Firestore şemanıza uygun alan isimleri
+        for doc_id, bilgi in stoklar.items():
             ad = bilgi.get('parca_adi') or bilgi.get('ad') or '-'
-            kat = bilgi.get('kategori', 'Genel')
+            kod = bilgi.get('parca_kodu') or bilgi.get('kod') or doc_id
+            barkod = bilgi.get('barkod') or bilgi.get('barkod_no') or doc_id
             raf = bilgi.get('raf_konumu') or bilgi.get('raf') or '-'
             stok = bilgi.get('stok') if bilgi.get('stok') is not None else bilgi.get('miktar', 0)
             
-            lbl = Label(
-                text=f"[{key}] {ad} | Kat: {kat} | Raf: {raf} | Stok: {stok}",
+            # Filtreleme
+            if arama_metni and (arama_metni.lower() not in ad.lower() and arama_metni.lower() not in barkod.lower() and arama_metni.lower() not in kod.lower()):
+                continue
+
+            # Kart Ana Kutu
+            card = BoxLayout(orientation='horizontal', size_hint_y=None, height='80dp', padding=8, spacing=5)
+            
+            with card.canvas.before:
+                Color(0.18, 0.22, 0.28, 1)
+                Rectangle(pos=card.pos, size=card.size)
+            card.bind(pos=lambda instance, value: self._update_rect(instance), size=lambda instance, value: self._update_rect(instance))
+
+            # Sol Taraf: Bilgi Metinleri
+            info_text = f"Adı: {ad}\nKod: {kod} | Barkod: {barkod}\nRaf: {raf} | Stok: {stok} Adet"
+            lbl_info = Label(
+                text=info_text,
                 halign='left',
                 valign='middle',
-                font_size='14sp'
+                font_size='13sp',
+                size_hint_x=0.75,
+                color=(0.9, 0.9, 0.9, 1)
             )
-            lbl.bind(size=lbl.setter('text_size'))
-            item_box.add_widget(lbl)
-            self.grid_stok.add_widget(item_box)
+            lbl_info.bind(size=lbl_info.setter('text_size'))
+            card.add_widget(lbl_info)
+
+            # Sağ Taraf: + ve - Buton Kutusu
+            btn_box = BoxLayout(orientation='vertical', size_hint_x=0.25, spacing=3)
+            
+            btn_inc = Button(
+                text='+', 
+                background_normal='', 
+                background_color=(0.12, 0.68, 0.32, 1), 
+                bold=True, 
+                font_size='18sp'
+            )
+            btn_dec = Button(
+                text='-', 
+                background_normal='', 
+                background_color=(0.85, 0.22, 0.2, 1), 
+                bold=True, 
+                font_size='18sp'
+            )
+            
+            btn_inc.bind(on_release=lambda x, d=doc_id, u=bilgi: self.stok_degistir(d, u, 1))
+            btn_dec.bind(on_release=lambda x, d=doc_id, u=bilgi: self.stok_degistir(d, u, -1))
+            
+            btn_box.add_widget(btn_inc)
+            btn_box.add_widget(btn_dec)
+            card.add_widget(btn_box)
+
+            self.grid_stok.add_widget(card)
+
+    def _update_rect(self, instance):
+        instance.canvas.before.clear()
+        with instance.canvas.before:
+            Color(0.18, 0.22, 0.28, 1)
+            Rectangle(pos=instance.pos, size=instance.size)
+
+    def stok_degistir(self, doc_id, urun_data, miktar_degisimi):
+        mevcut_stok = urun_data.get('stok') if urun_data.get('stok') is not None else urun_data.get('miktar', 0)
+        yeni_stok = max(0, mevcut_stok + miktar_degisimi)
+        
+        urun_data['stok'] = yeni_stok
+        urun_data['miktar'] = yeni_stok
+        
+        if FirestoreManager.urun_kaydet_veya_guncelle(doc_id, urun_data):
+            self.stok_listesini_yenile(self.txt_scan.text.strip())
 
     def barkod_isle(self, instance):
-        barkod = self.txt_scan.text.strip()
-        if barkod:
-            App.get_running_app().process_barcode_scan(barkod)
-            self.txt_scan.text = ''
+        metin = self.txt_scan.text.strip()
+        if metin:
+            App.get_running_app().process_barcode_scan(metin)
+
+    def kamera_baslat(self, instance):
+        metin = self.txt_scan.text.strip()
+        if metin:
+            App.get_running_app().process_barcode_scan(metin)
 
     def parca_ekle_sayfasina_git(self, instance):
         self.manager.current = 'parca_ekle'
@@ -329,49 +400,11 @@ class MobileApp(App):
         stoklar = FirestoreManager.tum_stoklari_getir()
         
         if barcode in stoklar:
-            self.show_stock_update_popup(barcode, stoklar[barcode])
+            self.stok_ekrani.stok_listesini_yenile(arama_metni=barcode)
         else:
             self.parca_ekrani.txt_barkod.text = barcode
             self.parca_ekrani.txt_kod.text = barcode
             self.sm.current = 'parca_ekle'
-
-    def show_stock_update_popup(self, doc_id, urun):
-        ad = urun.get('parca_adi') or urun.get('ad') or '-'
-        mevcut_stok = urun.get('stok') if urun.get('stok') is not None else urun.get('miktar', 0)
-        
-        layout = BoxLayout(orientation='vertical', spacing=10, padding=15)
-        layout.add_widget(Label(text=f"Ürün: {ad}\nMevcut Stok: {mevcut_stok}", font_size='16sp'))
-        
-        qty_input = TextInput(text="1", input_filter="int", multiline=False, font_size='20sp', halign='center')
-        layout.add_widget(qty_input)
-        
-        btn_layout = BoxLayout(spacing=10, size_hint_y=0.6)
-        btn_add = Button(text="Stok Ekle (+)", background_normal='', background_color=(0.12, 0.68, 0.32, 1), font_size='16sp', bold=True)
-        btn_sub = Button(text="Stok Çıkar (-)", background_normal='', background_color=(0.85, 0.22, 0.2, 1), font_size='16sp', bold=True)
-        
-        btn_layout.add_widget(btn_add)
-        btn_layout.add_widget(btn_sub)
-        layout.add_widget(btn_layout)
-        
-        popup = Popup(title="Stok Adedi Güncelle", content=layout, size_hint=(0.85, 0.45))
-        
-        def update_qty(is_addition):
-            try:
-                miktar = int(qty_input.text) if qty_input.text else 0
-                yeni_stok = (mevcut_stok + miktar) if is_addition else max(0, mevcut_stok - miktar)
-                
-                urun['stok'] = yeni_stok
-                urun['miktar'] = yeni_stok
-                
-                FirestoreManager.urun_kaydet_veya_guncelle(doc_id, urun)
-                self.stok_ekrani.stok_listesini_yenile()
-                popup.dismiss()
-            except ValueError:
-                pass
-
-        btn_add.bind(on_release=lambda x: update_qty(True))
-        btn_sub.bind(on_release=lambda x: update_qty(False))
-        popup.open()
 
 
 if __name__ == '__main__':
