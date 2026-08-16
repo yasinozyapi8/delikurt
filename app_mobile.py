@@ -30,7 +30,6 @@ class SplashEkrani(Screen):
         
         layout = FloatLayout()
         
-        # 1. ORTA ALAN: Uygulama Logosu + Stok Takip Sistemi Yazısı
         center_box = BoxLayout(
             orientation='horizontal',
             size_hint=(0.85, None),
@@ -61,7 +60,6 @@ class SplashEkrani(Screen):
         center_box.add_widget(title_lbl)
         layout.add_widget(center_box)
         
-        # 2. ALT ALAN: Delikurt Stüdyo Logo ve İmza
         bottom_box = BoxLayout(
             orientation='vertical',
             size_hint=(0.8, None),
@@ -243,6 +241,17 @@ class FirestoreManager:
             print(f"Firestore Kayıt Hatası: {e}")
             return False
 
+    @classmethod
+    def urun_sil(cls, doc_id):
+        """Veritabanından doküman silme işlemi"""
+        try:
+            url = f"{FIRESTORE_URL}/{doc_id}"
+            res = requests.delete(url, timeout=5)
+            return res.status_code == 200
+        except Exception as e:
+            print(f"Firestore Silme Hatası: {e}")
+            return False
+
 
 class AnaStokEkrani(Screen):
     def __init__(self, **kwargs):
@@ -396,7 +405,6 @@ class AnaStokEkrani(Screen):
                 font_size='18sp'
             )
             
-            # Artık doğrudan değiştirmiyor, Miktar Girmeli Pop-up açıyor
             btn_inc.bind(on_release=lambda x, d=doc_id, u=bilgi: self.stok_miktar_popup_ac(d, u))
             btn_dec.bind(on_release=lambda x, d=doc_id, u=bilgi: self.stok_miktar_popup_ac(d, u))
             
@@ -416,7 +424,6 @@ class AnaStokEkrani(Screen):
             Rectangle(pos=instance.pos, size=instance.size)
 
     def stok_miktar_popup_ac(self, doc_id, urun_data):
-        """Toplu miktar artırma/azaltma pop-up ekranı"""
         ad = urun_data.get('parca_adi') or urun_data.get('ad') or '-'
         mevcut_stok = urun_data.get('stok') if urun_data.get('stok') is not None else urun_data.get('miktar', 0)
 
@@ -559,7 +566,6 @@ class AnaStokEkrani(Screen):
                             popup.dismiss()
                             q = parsed_text.strip().lower()
                             
-                            # Taranan ürünü bulup doğrudan stok değiştirme pop-up'ını açar
                             eslesen_doc_id = None
                             eslesen_data = None
                             
@@ -602,6 +608,7 @@ class ParcaEkleEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = 'parca_ekle'
+        self.current_doc_id = None
         
         main_layout = BoxLayout(orientation='vertical', padding=[15, 10, 15, 10], spacing=8)
         
@@ -659,36 +666,49 @@ class ParcaEkleEkrani(Screen):
         scroll.add_widget(form_layout)
         main_layout.add_widget(scroll)
         
-        btn_box = BoxLayout(spacing=10, size_hint_y=None, height='60dp')
+        self.btn_box = BoxLayout(spacing=10, size_hint_y=None, height='60dp')
         
-        btn_kaydet = Button(
+        self.btn_kaydet = Button(
             text="Kaydet", 
             background_normal='',
             background_color=(0.12, 0.68, 0.32, 1), 
-            font_size='18sp',
+            font_size='16sp',
             bold=True
         )
-        btn_kaydet.bind(on_release=self.parca_kaydet)
+        self.btn_kaydet.bind(on_release=self.parca_kaydet)
         
-        btn_iptal = Button(
-            text="İptal", 
+        self.btn_sil = Button(
+            text="🗑️ Parçayı Sil", 
             background_normal='',
             background_color=(0.85, 0.22, 0.2, 1), 
-            font_size='18sp',
+            font_size='16sp',
             bold=True
         )
-        btn_iptal.bind(on_release=self.iptal_et)
+        self.btn_sil.bind(on_release=self.parca_sil_onay_popup)
         
-        btn_box.add_widget(btn_kaydet)
-        btn_box.add_widget(btn_iptal)
-        main_layout.add_widget(btn_box)
+        self.btn_iptal = Button(
+            text="İptal", 
+            background_normal='',
+            background_color=(0.5, 0.5, 0.5, 1), 
+            font_size='16sp',
+            bold=True
+        )
+        self.btn_iptal.bind(on_release=self.iptal_et)
+        
+        self.btn_box.add_widget(self.btn_kaydet)
+        self.btn_box.add_widget(self.btn_iptal)
+        main_layout.add_widget(self.btn_box)
         
         self.add_widget(main_layout)
 
     def duzenle_modu_ac(self, urun_data):
         self.lbl_title.text = "PARÇA DÜZENLE"
         self.txt_ad.text = str(urun_data.get('parca_adi') or urun_data.get('ad') or '')
-        self.txt_kod.text = str(urun_data.get('parca_kodu') or urun_data.get('kod') or urun_data.get('doc_id') or '')
+        
+        doc_id = str(urun_data.get('parca_kodu') or urun_data.get('kod') or urun_data.get('doc_id') or '')
+        self.txt_kod.text = doc_id
+        self.current_doc_id = doc_id
+        
         self.txt_barkod.text = str(urun_data.get('barkod') or urun_data.get('barkod_no') or '')
         self.txt_kategori.text = str(urun_data.get('kategori') or 'Genel')
         self.txt_raf.text = str(urun_data.get('raf_konumu') or urun_data.get('raf') or '')
@@ -699,9 +719,66 @@ class ParcaEkleEkrani(Screen):
         kritik_val = urun_data.get('kritik_stok') if urun_data.get('kritik_stok') is not None else urun_data.get('kritik_seviye', 5)
         self.txt_kritik.text = str(kritik_val)
 
+        # Düzenleme modunda Sil butonunu ekle
+        self.btn_box.clear_widgets()
+        self.btn_box.add_widget(self.btn_kaydet)
+        self.btn_box.add_widget(self.btn_sil)
+        self.btn_box.add_widget(self.btn_iptal)
+
     def yeni_ekle_modu_ac(self):
         self.lbl_title.text = "YENİ YEDEK PARÇA EKLE"
+        self.current_doc_id = None
         self.formu_temizle()
+        
+        # Yeni ekleme modunda Sil butonunu gizle
+        self.btn_box.clear_widgets()
+        self.btn_box.add_widget(self.btn_kaydet)
+        self.btn_box.add_widget(self.btn_iptal)
+
+    def parca_sil_onay_popup(self, instance):
+        if not self.current_doc_id:
+            return
+
+        content = BoxLayout(orientation='vertical', spacing=10, padding=15)
+        
+        lbl = Label(
+            text=f"'{self.txt_ad.text}' parçası silinecek.\nBu işlem geri alınamaz!",
+            font_size='15sp',
+            halign='center',
+            bold=True
+        )
+        content.add_widget(lbl)
+
+        btn_box = BoxLayout(spacing=10, size_hint_y=None, height='45dp')
+        
+        btn_evet = Button(
+            text="Evet, Sil",
+            background_normal='',
+            background_color=(0.85, 0.22, 0.2, 1),
+            bold=True
+        )
+        btn_hayir = Button(
+            text="Vazgeç",
+            background_normal='',
+            background_color=(0.5, 0.5, 0.5, 1),
+            bold=True
+        )
+
+        btn_box.add_widget(btn_evet)
+        btn_box.add_widget(btn_hayir)
+        content.add_widget(btn_box)
+
+        popup = Popup(title="Parça Silme Onayı", content=content, size_hint=(0.88, 0.35))
+
+        def sil_islem(btn):
+            if FirestoreManager.urun_sil(self.current_doc_id):
+                popup.dismiss()
+                self.formu_temizle()
+                self.manager.current = 'stok_liste'
+
+        btn_evet.bind(on_release=sil_islem)
+        btn_hayir.bind(on_release=popup.dismiss)
+        popup.open()
 
     def parca_kaydet(self, instance):
         kod = self.txt_kod.text.strip()
