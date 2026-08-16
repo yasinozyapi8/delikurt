@@ -18,6 +18,13 @@ from kivy.uix.camera import Camera
 from kivy.uix.image import Image as KivyImage
 from kivy.graphics import Color, Rectangle, PushMatrix, Rotate, PopMatrix, Line
 
+# --- BİLDİRİM KÜTÜPHANESİ ENTEGRASYONU ---
+try:
+    from plyer import notification
+    HAS_PLYER = True
+except ImportError:
+    HAS_PLYER = False
+
 Window.clearcolor = (0.0, 0.0, 0.0, 1)
 
 FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/databases/(default)/documents/stoklar"
@@ -261,6 +268,7 @@ class AnaStokEkrani(Screen):
         super().__init__(**kwargs)
         self.name = 'stok_liste'
         self.tum_stoklar_cache = {}
+        self.eski_stoklar = {}  # Bildirimleri kıyaslamak için stok hafızası
         self.sync_event = None
         
         main_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
@@ -334,6 +342,65 @@ class AnaStokEkrani(Screen):
         
         self.add_widget(main_layout)
 
+    def bildirim_gonder(self, baslik, mesaj):
+        """Android üst bildirim çubuğuna mesaj fırlatır"""
+        if HAS_PLYER:
+            try:
+                notification.notify(
+                    title=baslik,
+                    message=mesaj,
+                    app_name="Stok Takip",
+                    timeout=4
+                )
+            except Exception as e:
+                print(f"Android Bildirim Hatası: {e}")
+
+    def stok_bildirim_kontrol_et(self, yeni_stok_dict):
+        """Firestore'dan gelen verileri eski verilerle kıyaslayıp bildirim atar"""
+        for doc_id, item in yeni_stok_dict.items():
+            kod = str(item.get("parca_kodu") or item.get("kod") or doc_id or "")
+            ad = str(item.get("parca_adi") or item.get("ad") or "Bilinmeyen Parça")
+
+            stok_val = item.get("stok") if item.get("stok") is not None else item.get("miktar", 0)
+            yeni_m = int(stok_val)
+
+            kritik_val = item.get("kritik_stok") if item.get("kritik_stok") is not None else item.get("kritik_seviye", 5)
+            kritik_m = int(kritik_val)
+
+            if not kod:
+                continue
+
+            # İlk yüklemede hafızaya al
+            if kod not in self.eski_stoklar:
+                self.eski_stoklar[kod] = yeni_m
+                continue
+
+            eski_m = self.eski_stoklar[kod]
+
+            # 1. Stok Artışı
+            if yeni_m > eski_m:
+                fark = yeni_m - eski_m
+                self.bildirim_gonder(
+                    "📦 Stok Artışı",
+                    f"{ad}\n+{fark} adet eklendi. Yeni Stok: {yeni_m} Adet"
+                )
+
+            # 2. Stok Azalışı ve Kritik Seviye
+            elif yeni_m < eski_m:
+                fark = eski_m - yeni_m
+                if yeni_m <= kritik_m:
+                    self.bildirim_gonder(
+                        "⚠️ KRİTİK STOK UYARISI!",
+                        f"{ad}\n-{fark} adet düştü! Stok kritik seviyede: {yeni_m} Adet kaldı."
+                    )
+                else:
+                    self.bildirim_gonder(
+                        "📉 Stok Azaldı",
+                        f"{ad}\n-{fark} adet düştü. Kalan Stok: {yeni_m} Adet"
+                    )
+
+            self.eski_stoklar[kod] = yeni_m
+
     def on_enter(self):
         self.stok_verilerini_yukle()
         if not self.sync_event:
@@ -351,6 +418,7 @@ class AnaStokEkrani(Screen):
             if yeni_veri:
                 self.tum_stoklar_cache = yeni_veri
                 Clock.schedule_once(lambda x: self.filtrele_ve_goster(self.txt_scan.text.strip()), 0)
+                Clock.schedule_once(lambda x: self.stok_bildirim_kontrol_et(yeni_veri), 0)
 
         threading.Thread(target=arkaplan_fetch, daemon=True).start()
 
@@ -361,6 +429,7 @@ class AnaStokEkrani(Screen):
             if yeni_veri:
                 self.tum_stoklar_cache = yeni_veri
                 Clock.schedule_once(lambda x: self.filtrele_ve_goster(self.txt_scan.text.strip()), 0)
+                Clock.schedule_once(lambda x: self.stok_bildirim_kontrol_et(yeni_veri), 0)
 
         threading.Thread(target=arkaplan_yukle, daemon=True).start()
 
