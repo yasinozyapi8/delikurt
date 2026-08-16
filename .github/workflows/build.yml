@@ -29,9 +29,13 @@ jobs:
         sudo apt install -y ccache libltdl-dev autoconf automake libtool pkg-config gettext autopoint zip unzip
         pip install --upgrade pip
         pip install "buildozer>=1.5.0" "cython<3.0.0"
-
-    - name: Build with Buildozer
-      run: yes | buildozer android debug
+ 
+   - name: Build with Buildozer
+  env:
+    ANDROID_NDK_HOME: ""
+    ANDROID_NDK_ROOT: ""
+    ANDROID_NDK: ""
+  run: buildozer -v android debug
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
