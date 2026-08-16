@@ -1,6 +1,8 @@
 import os
+import io
 import kivy
 import requests
+from PIL import Image
 from kivy.app import App
 from kivy.core.window import Window
 from kivy.uix.screenmanager import ScreenManager, Screen
@@ -21,6 +23,7 @@ FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/d
 
 
 class RotatedCamera(Camera):
+    """Android Dikey Ekran İçin Tam Ekran Açı Düzeltmeli Kamera"""
     def __init__(self, angle=-90, **kwargs):
         super().__init__(**kwargs)
         self.allow_stretch = True
@@ -37,6 +40,7 @@ class RotatedCamera(Camera):
 
 
 class CameraScanWidget(FloatLayout):
+    """Genişletilmiş Kamera ve Yeşil Odak Çerçevesi"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
@@ -54,13 +58,13 @@ class CameraScanWidget(FloatLayout):
             self.add_widget(Label(text="Kamera başlatılamadı.", pos_hint={'center_x': 0.5, 'center_y': 0.5}))
 
         with self.canvas.after:
-            Color(0.12, 0.85, 0.38, 1)
+            Color(0.12, 0.85, 0.38, 1) # Neon Yeşil
             self.line = Line(width=4)
             
         self.bind(pos=self.update_frame, size=self.update_frame)
 
         lbl = Label(
-            text="QR / Barkodu Çerçeveye Hizalayın",
+            text="QR / Barkodu Yeşil Çerçeveye Hizalayın",
             size_hint=(1, None),
             height='35dp',
             pos_hint={'top': 0.99, 'center_x': 0.5},
@@ -342,20 +346,25 @@ class AnaStokEkrani(Screen):
         def qr_tara_islem(btn):
             if cam_widget.cam:
                 try:
-                    btn_tara.text = "Taranıyor..."
+                    btn_tara.text = "İşleniyor..."
                     temp_path = "temp_scan.png"
                     cam_widget.cam.export_to_png(temp_path)
                     
                     if os.path.exists(temp_path):
-                        # API'ye resmi gönder ve QR sonucunu al
-                        with open(temp_path, 'rb') as f:
-                            res = requests.post("https://api.qrserver.com/v1/read-qr-code/", files={'file': f}, timeout=7)
-                            
+                        # Görüntüyü 90 derece döndürerek dik açıya getir
+                        img = Image.open(temp_path)
+                        img_rotated = img.rotate(-90, expand=True)
+                        
+                        buffer = io.BytesIO()
+                        img_rotated.save(buffer, format="PNG")
+                        buffer.seek(0)
+                        
+                        res = requests.post("https://api.qrserver.com/v1/read-qr-code/", files={'file': ('scan.png', buffer, 'image/png')}, timeout=5)
+                        
                         if res.status_code == 200:
                             res_json = res.json()
                             symbol = res_json[0].get('symbol', [{}])[0]
                             parsed_text = symbol.get('data')
-                            error = symbol.get('error')
                             
                             if parsed_text:
                                 self.txt_scan.text = parsed_text
@@ -367,9 +376,9 @@ class AnaStokEkrani(Screen):
                         if os.path.exists(temp_path):
                             os.remove(temp_path)
                 except Exception as e:
-                    print(f"QR Okuma Hatası: {e}")
+                    print(f"QR İşleme Hatası: {e}")
                     
-            btn_tara.text = "Bulunamadı (Tekrar Deneyin)"
+            btn_tara.text = "Tekrar Dene"
 
         btn_tara.bind(on_release=qr_tara_islem)
         btn_kapat.bind(on_release=popup.dismiss)
