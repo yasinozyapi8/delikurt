@@ -11,6 +11,14 @@ from datetime import datetime
 import qrcode
 from PIL import Image, ImageTk
 
+# --- BİLDİRİM KÜTÜPHANESİ ---
+try:
+    from plyer import notification
+    HAS_PLYER = True
+except ImportError:
+    HAS_PLYER = False
+
+
 # --- FIREBASE WEB API KEY YAPILANDIRMASI ---
 PROJECT_ID = "stok-takip-f061b"
 API_KEY = "AIzaSyCxg29J4To7hVgXxHOhAY76oOwDcZqyvRY"
@@ -113,12 +121,73 @@ class StokUygulamasi:
 
         self.client = None
         self.tum_stoklar = []
+        self.eski_stoklar = {}  # Bildirim kıyaslaması için stok hafızası
         
         self.arayuz_olustur()
         self.baglantiyi_ve_verileri_baslat()
         
-        # Telefon değişikliklerini anlık çekebilmek için 10 saniyede bir otomatik senkronizasyon başlatılır
+        # Telefondan yapılan güncellemeleri anlık çekebilmek için 2.5 saniyede bir otomatik senkronizasyon
         self.root.after(2500, self.otomatik_canli_senkronizasyon)
+
+    def bildirim_gonder(self, baslik, mesaj):
+        """Windows sağ alt bildirim balonu fırlatır"""
+        if HAS_PLYER:
+            try:
+                notification.notify(
+                    title=baslik,
+                    message=mesaj,
+                    app_name="Stok Takip Sistemi",
+                    timeout=4
+                )
+            except Exception as e:
+                print(f"Bildirim hatası: {e}")
+
+    def stok_bildirim_kontrol_et(self, yeni_stok_listesi):
+        """Stok değişimlerini kıyaslar ve Windows bildirimi fırlatır"""
+        for item in yeni_stok_listesi:
+            kod = str(item.get("parca_kodu") or item.get("doc_id") or "")
+            ad = str(item.get("parca_adi") or item.get("ad") or "Bilinmeyen Parça")
+            
+            miktar = item.get("miktar") if item.get("miktar") is not None else item.get("stok", 0)
+            yeni_m = int(miktar)
+            
+            kritik = item.get("kritik_seviye") if item.get("kritik_seviye") is not None else item.get("kritik_stok", 5)
+            kritik_m = int(kritik)
+
+            if not kod:
+                continue
+
+            # İlk açılışta eski stok kaydı yoksa hafızaya kaydet
+            if kod not in self.eski_stoklar:
+                self.eski_stoklar[kod] = yeni_m
+                continue
+
+            eski_m = self.eski_stoklar[kod]
+
+            # 1. Stok Artışı Kontrolü
+            if yeni_m > eski_m:
+                fark = yeni_m - eski_m
+                self.bildirim_gonder(
+                    "📦 Stok Artışı",
+                    f"{ad}\n+{fark} adet eklendi. Yeni Stok: {yeni_m} Adet"
+                )
+
+            # 2. Stok Azalışı ve Kritik Stok Kontrolü
+            elif yeni_m < eski_m:
+                fark = eski_m - yeni_m
+                if yeni_m <= kritik_m:
+                    self.bildirim_gonder(
+                        "⚠️ KRİTİK STOK UYARISI!",
+                        f"{ad}\n-{fark} adet düştü! Stok kritik seviyede: {yeni_m} Adet kaldı."
+                    )
+                else:
+                    self.bildirim_gonder(
+                        "📉 Stok Azaldı",
+                        f"{ad}\n-{fark} adet düştü. Kalan Stok: {yeni_m} Adet"
+                    )
+
+            # Güncel değeri hafızaya kaydet
+            self.eski_stoklar[kod] = yeni_m
 
     def uygulamayi_kapat(self):
         try:
@@ -138,7 +207,9 @@ class StokUygulamasi:
 
                 self.tum_stoklar = self.client.get_all("stoklar")
 
+                # Arayüz ve Bildirim kontrollerini güncelle
                 self.root.after(0, self.stok_listele)
+                self.root.after(0, lambda: self.stok_bildirim_kontrol_et(self.tum_stoklar))
                 
                 toplam = len(self.tum_stoklar)
                 if not sessiz:
@@ -156,7 +227,7 @@ class StokUygulamasi:
         threading.Thread(target=arkaplan_islem, daemon=True).start()
 
     def otomatik_canli_senkronizasyon(self):
-        """Telefondan yapılan güncellemeleri 10 saniyede bir arka planda sessizce çeker"""
+        """Telefondan yapılan güncellemeleri 2.5 saniyede bir arka planda sessizce çeker"""
         self.baglantiyi_ve_verileri_baslat(sessiz=True)
         self.root.after(2500, self.otomatik_canli_senkronizasyon)
 
@@ -254,7 +325,6 @@ class StokUygulamasi:
             ad = str(item.get("parca_adi") or item.get("ad") or "-")
             kat = str(item.get("kategori", "Genel"))
             
-            # Telefon ve PC veri isimlerinin ortak uyumu (stok / miktar)
             miktar = item.get("miktar") if item.get("miktar") is not None else item.get("stok", 0)
             miktar = int(miktar)
             
