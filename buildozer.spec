@@ -105,6 +105,9 @@ fullscreen = 0
 # (See https://python-for-android.readthedocs.io/en/latest/buildoptions.html for all the supported syntaxes and properties)
 android.permissions = INTERNET, CAMERA, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE
 
+# (android.permissions satırının hemen altına ekleyin)
+android.ccache = 1
+
 # (list) features (adds uses-feature -tags to manifest)
 #android.features = android.hardware.usb.host
 
