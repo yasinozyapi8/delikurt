@@ -1,5 +1,5 @@
+import os
 import io
-import threading
 import requests
 from PIL import Image
 from kivy.app import App
@@ -18,9 +18,15 @@ from kivy.uix.camera import Camera
 from kivy.uix.image import Image as KivyImage
 from kivy.graphics import Color, Rectangle, PushMatrix, Rotate, PopMatrix, Line
 
-Window.clearcolor = (0.0, 0.0, 0.0, 1) # Tam Siyah Arka Plan
+Window.clearcolor = (0.0, 0.0, 0.0, 1)
 
 FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/databases/(default)/documents/stoklar"
+
+
+def get_asset_path(filename):
+    """Android ve PC ortamında görsel yolunu garantiye alan yardımcı fonksiyon"""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_dir, filename)
 
 
 class SplashEkrani(Screen):
@@ -40,7 +46,7 @@ class SplashEkrani(Screen):
         )
         
         app_logo = KivyImage(
-            source='app_icon.png',
+            source=get_asset_path('app_icon.png'),
             size_hint=(None, 1),
             width='90dp',
             allow_stretch=True,
@@ -70,7 +76,7 @@ class SplashEkrani(Screen):
         )
         
         delikurt_logo = KivyImage(
-            source='delikurt_studyo.png',
+            source=get_asset_path('delikurt_studyo.png'),
             size_hint=(1, None),
             height='55dp',
             allow_stretch=True,
@@ -78,7 +84,7 @@ class SplashEkrani(Screen):
         )
         
         delikurt_imza = KivyImage(
-            source='delikurt_imza.png',
+            source=get_asset_path('delikurt_imza.png'),
             size_hint=(1, None),
             height='35dp',
             allow_stretch=True,
@@ -99,7 +105,6 @@ class SplashEkrani(Screen):
 
 
 class LongPressLabel(Label):
-    """Hızlı ve Kararlı Uzun Basma Etiketi"""
     def __init__(self, **kwargs):
         self.on_long_press = kwargs.pop('on_long_press', None)
         self.target_data = kwargs.pop('target_data', None)
@@ -124,7 +129,6 @@ class LongPressLabel(Label):
 
 
 class RotatedCamera(Camera):
-    """Açı Düzeltmeli Kamera"""
     def __init__(self, angle=-90, **kwargs):
         super().__init__(**kwargs)
         self.allow_stretch = True
@@ -141,7 +145,6 @@ class RotatedCamera(Camera):
 
 
 class CameraScanWidget(FloatLayout):
-    """Kamera ve Yeşil Çerçeve Ekranı"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
@@ -333,18 +336,16 @@ class AnaStokEkrani(Screen):
 
     def on_enter(self):
         self.stok_verilerini_yukle()
-        # Ana ekrana girildiğinde 2.5 saniyede bir canlı senkronizasyon başlat
         if not self.sync_event:
             self.sync_event = Clock.schedule_interval(self.otomatik_canli_senkronize, 2.5)
 
     def on_leave(self):
-        # Düzenleme veya Ekleme ekranına geçilirse canlı kontrolü durdur
         if self.sync_event:
             Clock.unschedule(self.sync_event)
             self.sync_event = None
 
     def otomatik_canli_senkronize(self, dt):
-        """PC'den yapılan stok değişikliklerini arka planda dondurmadan çeker"""
+        import threading
         def arkaplan_fetch():
             yeni_veri = FirestoreManager.tum_stoklari_getir()
             if yeni_veri:
@@ -354,6 +355,7 @@ class AnaStokEkrani(Screen):
         threading.Thread(target=arkaplan_fetch, daemon=True).start()
 
     def stok_verilerini_yukle(self):
+        import threading
         def arkaplan_yukle():
             yeni_veri = FirestoreManager.tum_stoklari_getir()
             if yeni_veri:
