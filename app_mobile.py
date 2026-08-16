@@ -328,7 +328,7 @@ class AnaEkran(Screen):
         
         stok_box = BoxLayout(orientation='horizontal', spacing=5, size_hint_y=None, height=55)
         btn_e = Button(text='-', size_hint_x=0.25, background_color=(0.7, 0.2, 0.2, 1), background_normal='', font_size='20sp', bold=True)
-        btn_a = Button(text='+', size_hint_x=0.25, background_color=(0.2, 0.6, 0.2, 1), background_normal='', bold=True, font_size='20sp', bold=True)
+        btn_a = Button(text='+', size_hint_x=0.25, background_color=(0.2, 0.6, 0.2, 1), background_normal='', font_size='20sp', bold=True)
         
         btn_e.bind(on_release=lambda x: setattr(txt_stok, 'text', str(max(0, int(txt_stok.text or 0) - 1))))
         btn_a.bind(on_release=lambda x: setattr(txt_stok, 'text', str(int(txt_stok.text or 0) + 1)))
