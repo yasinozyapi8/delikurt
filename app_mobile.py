@@ -1,4 +1,5 @@
 import io
+import threading
 import requests
 from PIL import Image
 from kivy.app import App
@@ -243,7 +244,6 @@ class FirestoreManager:
 
     @classmethod
     def urun_sil(cls, doc_id):
-        """Veritabanından doküman silme işlemi"""
         try:
             url = f"{FIRESTORE_URL}/{doc_id}"
             res = requests.delete(url, timeout=5)
@@ -258,6 +258,7 @@ class AnaStokEkrani(Screen):
         super().__init__(**kwargs)
         self.name = 'stok_liste'
         self.tum_stoklar_cache = {}
+        self.sync_event = None
         
         main_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
         
@@ -332,10 +333,34 @@ class AnaStokEkrani(Screen):
 
     def on_enter(self):
         self.stok_verilerini_yukle()
+        # Ana ekrana girildiğinde 2.5 saniyede bir canlı senkronizasyon başlat
+        if not self.sync_event:
+            self.sync_event = Clock.schedule_interval(self.otomatik_canli_senkronize, 2.5)
+
+    def on_leave(self):
+        # Düzenleme veya Ekleme ekranına geçilirse canlı kontrolü durdur
+        if self.sync_event:
+            Clock.unschedule(self.sync_event)
+            self.sync_event = None
+
+    def otomatik_canli_senkronize(self, dt):
+        """PC'den yapılan stok değişikliklerini arka planda dondurmadan çeker"""
+        def arkaplan_fetch():
+            yeni_veri = FirestoreManager.tum_stoklari_getir()
+            if yeni_veri:
+                self.tum_stoklar_cache = yeni_veri
+                Clock.schedule_once(lambda x: self.filtrele_ve_goster(self.txt_scan.text.strip()), 0)
+
+        threading.Thread(target=arkaplan_fetch, daemon=True).start()
 
     def stok_verilerini_yukle(self):
-        self.tum_stoklar_cache = FirestoreManager.tum_stoklari_getir()
-        self.filtrele_ve_goster(self.txt_scan.text.strip())
+        def arkaplan_yukle():
+            yeni_veri = FirestoreManager.tum_stoklari_getir()
+            if yeni_veri:
+                self.tum_stoklar_cache = yeni_veri
+                Clock.schedule_once(lambda x: self.filtrele_ve_goster(self.txt_scan.text.strip()), 0)
+
+        threading.Thread(target=arkaplan_yukle, daemon=True).start()
 
     def anlik_arama_yap(self, instance, value):
         self.filtrele_ve_goster(value.strip())
@@ -719,7 +744,6 @@ class ParcaEkleEkrani(Screen):
         kritik_val = urun_data.get('kritik_stok') if urun_data.get('kritik_stok') is not None else urun_data.get('kritik_seviye', 5)
         self.txt_kritik.text = str(kritik_val)
 
-        # Düzenleme modunda Sil butonunu ekle
         self.btn_box.clear_widgets()
         self.btn_box.add_widget(self.btn_kaydet)
         self.btn_box.add_widget(self.btn_sil)
@@ -730,7 +754,6 @@ class ParcaEkleEkrani(Screen):
         self.current_doc_id = None
         self.formu_temizle()
         
-        # Yeni ekleme modunda Sil butonunu gizle
         self.btn_box.clear_widgets()
         self.btn_box.add_widget(self.btn_kaydet)
         self.btn_box.add_widget(self.btn_iptal)
