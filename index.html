@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Stok Takip Sistemi</title>
+    <!-- iOS PWA Meta Etiketleri -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Stok Takip">
+    <link rel="apple-touch-icon" href="app_icon.png">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: #000; color: #fff; padding: 15px; display: flex; flex-direction: column; min-height: 100vh; }
+        h1 { color: #4ba3f0; text-align: center; font-size: 20px; margin-bottom: 15px; font-weight: bold; }
+        .search-box { display: flex; gap: 8px; margin-bottom: 15px; }
+        input[type="text"] { flex: 1; padding: 12px; background: #111; border: 1px solid #333; border-radius: 8px; color: #fff; font-size: 15px; outline: none; }
+        button { padding: 12px 16px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #fff; font-size: 14px; }
+        .btn-ara { background: #3388d6; }
+        .btn-ekle { background: #1fbd53; width: 100%; padding: 15px; font-size: 16px; margin-top: auto; border-radius: 10px; }
+        .card-list { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: calc(100vh - 180px); }
+        .card { background: #2e3847; padding: 12px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .card-info { font-size: 13px; line-height: 1.4; color: #e0e0e0; }
+        .card-btns { display: flex; flex-direction: column; gap: 5px; }
+        .btn-inc { background: #1fbd53; padding: 8px 14px; font-size: 16px; }
+        .btn-dec { background: #d93834; padding: 8px 14px; font-size: 16px; }
+        /* Modal Popup */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; }
+        .modal-content { background: #1e1e1e; padding: 20px; border-radius: 12px; width: 85%; text-align: center; }
+        .modal-btns { display: flex; gap: 10px; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+    <h1>STOK TAKİP SİSTEMİ</h1>
+
+    <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Barkod veya Parça Ara..." oninput="filtrele()">
+    </div>
+
+    <div class="card-list" id="stokListesi">
+        <p style="text-align:center; color:#888;">Yükleniyor...</p>
+    </div>
+
+    <!-- Miktar Modal -->
+    <div id="stokModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modalParcaAdi" style="margin-bottom:10px;">-</h3>
+            <p id="modalMevcutStok" style="margin-bottom:15px; color:#aaa;">-</p>
+            <input type="number" id="txtMiktar" value="1" style="width:80%; text-align:center; font-size:20px; padding:8px; margin-bottom:15px;">
+            <div class="modal-btns">
+                <button class="btn-inc" style="flex:1" onclick="stokGuncelle('artir')">➕ Artır</button>
+                <button class="btn-dec" style="flex:1" onclick="stokGuncelle('azalt')">➖ Azalt</button>
+            </div>
+            <button onclick="modalKapat()" style="background:#555; width:100%; margin-top:10px;">İptal</button>
+        </div>
+    </div>
+
+    <script>
+        const FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/databases/(default)/documents/stoklar";
+        let tumStoklar = {};
+        let seciliDocId = null;
+
+        async function stoklariGetir() {
+            try {
+                const res = await fetch(FIRESTORE_URL);
+                const data = await res.json();
+                tumStoklar = {};
+                if (data.documents) {
+                    data.documents.forEach(doc => {
+                        const docId = doc.name.split("/").pop();
+                        const fields = doc.fields || {};
+                        tumStoklar[docId] = {
+                            ad: fields.parca_adi?.stringValue || fields.ad?.stringValue || '-',
+                            kod: fields.parca_kodu?.stringValue || fields.kod?.stringValue || docId,
+                            barkod: fields.barkod?.stringValue || fields.barkod_no?.stringValue || docId,
+                            raf: fields.raf_konumu?.stringValue || fields.raf?.stringValue || '-',
+                            stok: parseInt(fields.stok?.integerValue || fields.stok?.doubleValue || fields.miktar?.integerValue || 0)
+                        };
+                    });
+                }
+                filtrele();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function filtrele() {
+            const q = document.getElementById('searchInput').value.toLowerCase();
+            const listEl = document.getElementById('stokListesi');
+            listEl.innerHTML = '';
+
+            Object.keys(tumStoklar).forEach(docId => {
+                const u = tumStoklar[docId];
+                if (q && !u.ad.toLowerCase().includes(q) && !u.kod.toLowerCase().includes(q) && !u.barkod.toLowerCase().includes(q)) return;
+
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <div class="card-info">
+                        <strong>Adı:</strong> ${u.ad}<br>
+                        <strong>Kod:</strong> ${u.kod} | <strong>Barkod:</strong> ${u.barkod}<br>
+                        <strong>Raf:</strong> ${u.raf} | <strong>Stok:</strong> ${u.stok} Adet
+                    </div>
+                    <div class="card-btns">
+                        <button class="btn-inc" onclick="popupAc('${docId}')">+</button>
+                        <button class="btn-dec" onclick="popupAc('${docId}')">-</button>
+                    </div>
+                `;
+                listEl.appendChild(card);
+            });
+        }
+
+        function popupAc(docId) {
+            seciliDocId = docId;
+            const u = tumStoklar[docId];
+            document.getElementById('modalParcaAdi').innerText = u.ad;
+            document.getElementById('modalMevcutStok').innerText = `Mevcut Stok: ${u.stok} Adet`;
+            document.getElementById('stokModal').style.display = 'flex';
+        }
+
+        function modalKapat() {
+            document.getElementById('stokModal').style.display = 'none';
+        }
+
+        async function stokGuncelle(yon) {
+            const m = parseInt(document.getElementById('txtMiktar').value) || 1;
+            const u = tumStoklar[seciliDocId];
+            const yeniStok = Math.max(0, u.stok + (yon === 'artir' ? m : -m));
+
+            const payload = {
+                fields: {
+                    parca_adi: { stringValue: u.ad },
+                    parca_kodu: { stringValue: u.kod },
+                    barkod: { stringValue: u.barkod },
+                    raf_konumu: { stringValue: u.raf },
+                    stok: { integerValue: yeniStok.toString() },
+                    miktar: { integerValue: yeniStok.toString() }
+                }
+            };
+
+            await fetch(`${FIRESTORE_URL}/${seciliDocId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            modalKapat();
+            stoklariGetir();
+        }
+
+        // Canlı Senkronizasyon (2.5 Saniyede Bir)
+        setInterval(stoklariGetir, 2500);
+        stoklariGetir();
+    </script>
+</body>
+</html>
