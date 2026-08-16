@@ -34,7 +34,6 @@ VERITABANI = []
 VERI_KILIDI = threading.Lock()
 
 
-# --- FIREBASE ARKA PLAN REST İŞLEMLERİ ---
 def REST_verileri_cek_async(on_success_callback=None):
     def run():
         global VERITABANI
@@ -139,6 +138,21 @@ def android_izinlerini_iste():
             print("İzin alma hatası:", e)
 
 
+def create_styled_textinput(hint="", text=""):
+    return TextInput(
+        text=text,
+        hint_text=hint,
+        multiline=False,
+        background_normal='',
+        background_color=(0.95, 0.95, 0.95, 1),
+        foreground_color=(0, 0, 0, 1),
+        hint_text_color=(0.4, 0.4, 0.4, 1),
+        font_size='16sp',
+        use_bubble=False,
+        use_handles=False
+    )
+
+
 class BasiliTutulanItem(Button):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -173,14 +187,8 @@ class AnaEkran(Screen):
         ))
 
         arama_box = BoxLayout(orientation='horizontal', size_hint_y=0.09, spacing=6)
-        self.txt_barkod_ara = TextInput(
-            hint_text='Barkod veya Parça Ara...', 
-            multiline=False, 
-            background_color=(0.9, 0.9, 0.9, 1),
-            font_size='16sp',
-            use_bubble=False,
-            use_handles=False
-        )
+        self.txt_barkod_ara = create_styled_textinput(hint='Barkod veya Parça Ara...')
+        
         btn_ara = Button(text='Ara', size_hint_x=0.22, background_color=(0.2, 0.5, 0.9, 1), background_normal='', bold=True)
         btn_ara.bind(on_release=self.barkod_ara)
         
@@ -288,12 +296,23 @@ class AnaEkran(Screen):
         content = BoxLayout(orientation='vertical', spacing=8, size_hint_y=None)
         content.bind(minimum_height=content.setter('height'))
         
-        txt_ad = TextInput(text=str(data.get('parca_adi', '')), multiline=False, size_hint_y=None, height=55, font_size='16sp')
-        txt_parca_kodu = TextInput(text=str(data.get('parca_kodu', '')), multiline=False, size_hint_y=None, height=55, font_size='16sp')
-        txt_barkod = TextInput(text=str(data.get('barkod_no', '')), multiline=False, size_hint_y=None, height=55, font_size='16sp')
-        txt_raf = TextInput(text=str(data.get('raf_konumu', '')), multiline=False, size_hint_y=None, height=55, font_size='16sp')
-        txt_stok = TextInput(text=str(data.get('miktar', 0)), multiline=False, input_filter='int', size_hint_y=None, height=55, font_size='16sp')
-        txt_kritik_stok = TextInput(text=str(data.get('kritik_seviye', 5)), multiline=False, input_filter='int', size_hint_y=None, height=55, font_size='16sp')
+        txt_ad = create_styled_textinput(text=str(data.get('parca_adi', '')))
+        txt_ad.size_hint_y = None; txt_ad.height = 55
+        
+        txt_parca_kodu = create_styled_textinput(text=str(data.get('parca_kodu', '')))
+        txt_parca_kodu.size_hint_y = None; txt_parca_kodu.height = 55
+        
+        txt_barkod = create_styled_textinput(text=str(data.get('barkod_no', '')))
+        txt_barkod.size_hint_y = None; txt_barkod.height = 55
+        
+        txt_raf = create_styled_textinput(text=str(data.get('raf_konumu', '')))
+        txt_raf.size_hint_y = None; txt_raf.height = 55
+        
+        txt_stok = create_styled_textinput(text=str(data.get('miktar', 0)))
+        txt_stok.size_hint_y = None; txt_stok.height = 55; txt_stok.input_filter = 'int'
+        
+        txt_kritik_stok = create_styled_textinput(text=str(data.get('kritik_seviye', 5)))
+        txt_kritik_stok.size_hint_y = None; txt_kritik_stok.height = 55; txt_kritik_stok.input_filter = 'int'
 
         content.add_widget(Label(text="Parça Adı:", size_hint_y=None, height=25, bold=True))
         content.add_widget(txt_ad)
@@ -309,7 +328,7 @@ class AnaEkran(Screen):
         
         stok_box = BoxLayout(orientation='horizontal', spacing=5, size_hint_y=None, height=55)
         btn_e = Button(text='-', size_hint_x=0.25, background_color=(0.7, 0.2, 0.2, 1), background_normal='', font_size='20sp', bold=True)
-        btn_a = Button(text='+', size_hint_x=0.25, background_color=(0.2, 0.6, 0.2, 1), background_normal='', font_size='20sp', bold=True)
+        btn_a = Button(text='+', size_hint_x=0.25, background_color=(0.2, 0.6, 0.2, 1), background_normal='', bold=True, font_size='20sp', bold=True)
         
         btn_e.bind(on_release=lambda x: setattr(txt_stok, 'text', str(max(0, int(txt_stok.text or 0) - 1))))
         btn_a.bind(on_release=lambda x: setattr(txt_stok, 'text', str(int(txt_stok.text or 0) + 1)))
@@ -382,12 +401,23 @@ class ParcaEkleEkrani(Screen):
 
         form_layout = BoxLayout(orientation='vertical', spacing=6, size_hint_y=0.78)
 
-        self.txt_ad = TextInput(hint_text='Örn: Rulman 6204', multiline=False, size_hint_y=None, height=55, font_size='16sp')
-        self.txt_parca_kodu = TextInput(hint_text='Örn: PRC-001', multiline=False, size_hint_y=None, height=55, font_size='16sp')
-        self.txt_barkod = TextInput(hint_text='Örn: 86900012345', multiline=False, size_hint_y=None, height=55, font_size='16sp')
-        self.txt_raf = TextInput(hint_text='Örn: A-12', multiline=False, size_hint_y=None, height=55, font_size='16sp')
-        self.txt_stok = TextInput(hint_text='Örn: 10', multiline=False, input_filter='int', size_hint_y=None, height=55, font_size='16sp')
-        self.txt_kritik_stok = TextInput(hint_text='Örn: 5', multiline=False, input_filter='int', size_hint_y=None, height=55, font_size='16sp')
+        self.txt_ad = create_styled_textinput(hint='Örn: Rulman 6204')
+        self.txt_ad.size_hint_y = None; self.txt_ad.height = 55
+        
+        self.txt_parca_kodu = create_styled_textinput(hint='Örn: PRC-001')
+        self.txt_parca_kodu.size_hint_y = None; self.txt_parca_kodu.height = 55
+        
+        self.txt_barkod = create_styled_textinput(hint='Örn: 86900012345')
+        self.txt_barkod.size_hint_y = None; self.txt_barkod.height = 55
+        
+        self.txt_raf = create_styled_textinput(hint='Örn: A-12')
+        self.txt_raf.size_hint_y = None; self.txt_raf.height = 55
+        
+        self.txt_stok = create_styled_textinput(hint='Örn: 10')
+        self.txt_stok.size_hint_y = None; self.txt_stok.height = 55; self.txt_stok.input_filter = 'int'
+        
+        self.txt_kritik_stok = create_styled_textinput(hint='Örn: 5')
+        self.txt_kritik_stok.size_hint_y = None; self.txt_kritik_stok.height = 55; self.txt_kritik_stok.input_filter = 'int'
 
         form_layout.add_widget(Label(text="Parça Adı:", size_hint_y=None, height=22, bold=True))
         form_layout.add_widget(self.txt_ad)
@@ -478,14 +508,8 @@ class KameraEkrani(Screen):
         self.layout.add_widget(self.cam_container)
 
         scan_box = BoxLayout(orientation='horizontal', size_hint_y=0.10, spacing=6)
-        self.txt_manual_scan = TextInput(
-            hint_text='Barkod / Parça Kodu Girin...', 
-            multiline=False, 
-            size_hint_x=0.7, 
-            font_size='15sp',
-            use_bubble=False,
-            use_handles=False
-        )
+        self.txt_manual_scan = create_styled_textinput(hint='Barkod / Parça Kodu Girin...')
+        self.txt_manual_scan.size_hint_x = 0.7
         self.txt_manual_scan.bind(on_text_validate=lambda x: self.barkod_isle(self.txt_manual_scan.text.strip()))
 
         btn_process_scan = Button(text='Tarat / Ara', size_hint_x=0.3, background_color=(0.1, 0.6, 0.3, 1), background_normal='', bold=True)
