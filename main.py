@@ -19,7 +19,7 @@ LOGO_IMZA_URL = "https://raw.githubusercontent.com/yasinozyapi8/delikurt/refs/he
 
 class LoaderApp(App):
     def build(self):
-        root = FloatLayout()
+        self.root = FloatLayout()
 
         center_box = BoxLayout(
             orientation='vertical',
@@ -35,7 +35,7 @@ class LoaderApp(App):
             color=(0.9, 0.9, 0.9, 1)
         )
         center_box.add_widget(self.lbl_status)
-        root.add_widget(center_box)
+        self.root.add_widget(center_box)
 
         footer_box = BoxLayout(
             orientation='horizontal',
@@ -59,9 +59,9 @@ class LoaderApp(App):
 
         footer_box.add_widget(img_studyo)
         footer_box.add_widget(img_imza)
-        root.add_widget(footer_box)
+        self.root.add_widget(footer_box)
 
-        return root
+        return self.root
 
     def on_start(self):
         Clock.schedule_once(lambda dt: self.kod_indir_ve_baslat(), 0.5)
@@ -75,8 +75,8 @@ class LoaderApp(App):
                 code_text = resp.text
                 self.lbl_status.text = "✅ Başlatılıyor..."
                 
-                # 🧹 Loader bileşenlerini pencereden tamamen temizle
-                Window.clear_widgets()
+                # Ekrandaki yükleme bileşenlerini güvenli temizle
+                self.root.clear_widgets()
                 
                 exec_globals = {
                     '__name__': '__main__',
