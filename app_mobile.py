@@ -165,7 +165,7 @@ class AnaEkran(Screen):
         main_layout = BoxLayout(orientation='vertical', padding=12, spacing=10)
         
         main_layout.add_widget(Label(
-            text="DELİKURT STOK TAKİP (MOBİL)", 
+            text="STOK TAKİP SİSTEMİ", 
             font_size='18sp', 
             size_hint_y=0.08, 
             bold=True,
@@ -525,7 +525,6 @@ class KameraEkrani(Screen):
             cw, ch = self.cam_container.size
             cx, cy = self.cam_container.pos
 
-            # 90 derece döndürülen kameranın fiziksel boyut çakışmasını engelleme
             self.camera.size_hint = (None, None)
             self.camera.width = ch
             self.camera.height = cw
