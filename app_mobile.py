@@ -105,23 +105,19 @@ class SplashEkrani(Screen):
 
 
 class LongPressLabel(Label):
-    """Uzun basmayı algılayan metin etiketi"""
+    """Hızlı ve Kararlı Uzun Basma Etiketi"""
     def __init__(self, **kwargs):
         self.on_long_press = kwargs.pop('on_long_press', None)
+        self.target_data = kwargs.pop('target_data', None)
         super().__init__(**kwargs)
         self._clock = None
 
     def on_touch_down(self, touch):
         if self.collide_point(*touch.pos):
-            self._clock = Clock.schedule_once(lambda dt: self._trigger_long_press(), 0.5)
+            # Süreyi 0.3 saniyeye çektik (Hızlı tepki)
+            self._clock = Clock.schedule_once(lambda dt: self._trigger_long_press(), 0.3)
             return True
         return super().on_touch_down(touch)
-
-    def on_touch_move(self, touch):
-        if self._clock:
-            Clock.unschedule(self._clock)
-            self._clock = None
-        return super().on_touch_move(touch)
 
     def on_touch_up(self, touch):
         if self._clock:
@@ -130,8 +126,8 @@ class LongPressLabel(Label):
         return super().on_touch_up(touch)
 
     def _trigger_long_press(self):
-        if self.on_long_press:
-            self.on_long_press()
+        if self.on_long_press and self.target_data:
+            self.on_long_press(self.target_data)
 
 
 class RotatedCamera(Camera):
@@ -383,7 +379,8 @@ class AnaStokEkrani(Screen):
                 font_size='13sp',
                 size_hint_x=0.75,
                 color=(0.9, 0.9, 0.9, 1),
-                on_long_press=lambda u=bilgi: self.parca_duzenle_git(u)
+                target_data=bilgi,
+                on_long_press=self.parca_duzenle_git
             )
             lbl_info.bind(size=lbl_info.setter('text_size'))
             card.add_widget(lbl_info)
@@ -504,6 +501,8 @@ class AnaStokEkrani(Screen):
         popup.open()
 
     def parca_duzenle_git(self, urun_data):
+        if not urun_data:
+            return
         parca_ekrani = self.manager.get_screen('parca_ekle')
         parca_ekrani.duzenle_modu_ac(urun_data)
         self.manager.current = 'parca_ekle'
@@ -665,14 +664,12 @@ class ParcaEkleEkrani(Screen):
 
 class MobileApp(App):
     def build(self):
-        # Ekran geçişi yumuşatıldı
         self.sm = ScreenManager(transition=FadeTransition(duration=0.4))
         
         self.splash_ekrani = SplashEkrani()
         self.stok_ekrani = AnaStokEkrani()
         self.parca_ekrani = ParcaEkleEkrani()
         
-        # İlk önce splash ekranı eklendi (Uygulama buradan açılacak)
         self.sm.add_widget(self.splash_ekrani)
         self.sm.add_widget(self.stok_ekrani)
         self.sm.add_widget(self.parca_ekrani)
