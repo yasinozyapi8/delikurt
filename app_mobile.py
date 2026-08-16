@@ -11,11 +11,26 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 from kivy.uix.camera import Camera
-from kivy.graphics import Color, Rectangle
+from kivy.graphics import Color, Rectangle, PushMatrix, Rotate, PopMatrix
 
 Window.clearcolor = (0.1, 0.12, 0.15, 1)
 
 FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/databases/(default)/documents/stoklar"
+
+
+class RotatedCamera(Camera):
+    """Android Dikey Ekran İçin Açı Düzeltmeli Kamera Bileşeni"""
+    def __init__(self, angle=-90, **kwargs):
+        super().__init__(**kwargs)
+        with self.canvas.before:
+            PushMatrix()
+            self.rot = Rotate(angle=angle, axis=(0, 0, 1))
+        with self.canvas.after:
+            PopMatrix()
+        self.bind(pos=self._update_rot, size=self._update_rot)
+
+    def _update_rot(self, *args):
+        self.rot.origin = self.center
 
 
 class FirestoreManager:
@@ -260,7 +275,8 @@ class AnaStokEkrani(Screen):
         content = BoxLayout(orientation='vertical', spacing=10, padding=10)
         
         try:
-            cam = Camera(play=True, resolution=(640, 480))
+            # Sola yatık görüntüyü düzeltmek için RotatedCamera (-90 derece) kullanılır
+            cam = RotatedCamera(angle=-90, play=True, resolution=(640, 480))
             content.add_widget(cam)
         except Exception as e:
             content.add_widget(Label(text="Kamera başlatılamadı veya izin verilmedi."))
