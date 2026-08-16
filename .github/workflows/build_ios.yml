@@ -8,27 +8,35 @@ on:
 
 jobs:
   build-ios:
-    runs-on: macos-13
+    runs-on: macos-14
 
     steps:
       - name: Repository Klonla
         uses: actions/checkout@v4
 
-      - name: Python 3.10 Kurulumu
+      - name: Python 3.11 Kurulumu
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
+
+      - name: Kivy-iOS Önbelleği (Cache) Tanımla
+        uses: actions/cache@v4
+        with:
+          path: ~/.kivy-ios
+          key: ${{ runner.os }}-kivy-ios-${{ hashFiles('app_mobile_ios.py') }}
+          restore-keys: |
+            ${{ runner.os }}-kivy-ios-
 
       - name: Kivy-iOS Toolchain ve Bağımlılıkları Yükle
         run: |
-          pip install --upgrade pip
-          pip install kivy-ios Cython pillow requests
+          python3 -m pip install --upgrade pip
+          python3 -m pip install kivy-ios Cython pillow requests
 
       - name: iOS Giriş Dosyasını Hazırla
         run: |
           cp app_mobile_ios.py main.py
 
-      - name: Xcode Projesi Oluştur (kivy-ios)
+      - name: Xcode Projesi Oluştur
         run: |
           toolchain build python3 kivy
           toolchain create "StokTakip" .
