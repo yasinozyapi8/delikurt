@@ -9,12 +9,12 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
+from kivy.uix.popup import Popup
+from kivy.uix.camera import Camera
 from kivy.graphics import Color, Rectangle
 
-# Orijinal Koyu Arka Plan
 Window.clearcolor = (0.1, 0.12, 0.15, 1)
 
-# Firestore REST API Bağlantısı
 FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/databases/(default)/documents/stoklar"
 
 
@@ -94,19 +94,18 @@ class AnaStokEkrani(Screen):
         )
         main_layout.add_widget(title)
         
-        # Arama Barı
+        # Arama + Kamera Üst Barı
         scan_box = BoxLayout(orientation='horizontal', spacing=5, size_hint_y=None, height='50dp')
         
         self.txt_scan = TextInput(
             hint_text='Barkod veya Parça Ara...',
             multiline=False,
             font_size='16sp',
-            size_hint_x=0.8,
+            size_hint_x=0.6,
             background_color=(0.05, 0.05, 0.05, 1),
             foreground_color=(1, 1, 1, 1),
             padding=[10, 12, 10, 10]
         )
-        # Yazı yazıldıkça anlık canlı filtreleme yapar
         self.txt_scan.bind(text=self.anlik_arama_yap)
         
         btn_ara = Button(
@@ -119,8 +118,19 @@ class AnaStokEkrani(Screen):
         )
         btn_ara.bind(on_release=lambda x: self.filtrele_ve_goster(self.txt_scan.text.strip()))
         
+        btn_kamera = Button(
+            text='📷 Kamera',
+            size_hint_x=0.2,
+            background_normal='',
+            background_color=(0.85, 0.45, 0.1, 1),
+            bold=True,
+            font_size='14sp'
+        )
+        btn_kamera.bind(on_release=self.kamera_popup_ac)
+        
         scan_box.add_widget(self.txt_scan)
         scan_box.add_widget(btn_ara)
+        scan_box.add_widget(btn_kamera)
         main_layout.add_widget(scan_box)
         
         # Stok Kartları ScrollView
@@ -173,7 +183,6 @@ class AnaStokEkrani(Screen):
             raf = bilgi.get('raf_konumu') or bilgi.get('raf') or '-'
             stok = bilgi.get('stok') if bilgi.get('stok') is not None else bilgi.get('miktar', 0)
             
-            # Filtreleme Mantığı: Parça Adı, Kod, Barkod veya Raf Konumunda eşleşme arar
             if q:
                 if (q not in ad.lower() and 
                     q not in kod.lower() and 
@@ -183,7 +192,6 @@ class AnaStokEkrani(Screen):
 
             bulunan_sayisi += 1
 
-            # Kart Ana Kutu
             card = BoxLayout(orientation='horizontal', size_hint_y=None, height='80dp', padding=8, spacing=5)
             
             with card.canvas.before:
@@ -191,7 +199,6 @@ class AnaStokEkrani(Screen):
                 Rectangle(pos=card.pos, size=card.size)
             card.bind(pos=lambda instance, value: self._update_rect(instance), size=lambda instance, value: self._update_rect(instance))
 
-            # Sol Taraf: Bilgi Metinleri
             info_text = f"Adı: {ad}\nKod: {kod} | Barkod: {barkod}\nRaf: {raf} | Stok: {stok} Adet"
             lbl_info = Label(
                 text=info_text,
@@ -204,7 +211,6 @@ class AnaStokEkrani(Screen):
             lbl_info.bind(size=lbl_info.setter('text_size'))
             card.add_widget(lbl_info)
 
-            # Sağ Taraf: + ve - Buton Kutusu
             btn_box = BoxLayout(orientation='vertical', size_hint_x=0.25, spacing=3)
             
             btn_inc = Button(
@@ -232,7 +238,7 @@ class AnaStokEkrani(Screen):
             self.grid_stok.add_widget(card)
 
         if bulunan_sayisi == 0 and q:
-            self.grid_stok.add_widget(Label(text=f"'{arama_metni}' kriterine uygun ürün bulunamadı.", size_hint_y=None, height='40dp'))
+            self.grid_stok.add_widget(Label(text=f"'{arama_metni}' bulunamadı.", size_hint_y=None, height='40dp'))
 
     def _update_rect(self, instance):
         instance.canvas.before.clear()
@@ -249,6 +255,29 @@ class AnaStokEkrani(Screen):
         
         if FirestoreManager.urun_kaydet_veya_guncelle(doc_id, urun_data):
             self.stok_verilerini_yukle()
+
+    def kamera_popup_ac(self, instance):
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        
+        try:
+            cam = Camera(play=True, resolution=(640, 480))
+            content.add_widget(cam)
+        except Exception as e:
+            content.add_widget(Label(text="Kamera başlatılamadı veya izin verilmedi."))
+
+        btn_kapat = Button(
+            text="Kapat", 
+            size_hint_y=None, 
+            height='45dp', 
+            background_normal='',
+            background_color=(0.85, 0.22, 0.2, 1),
+            bold=True
+        )
+        content.add_widget(btn_kapat)
+        
+        popup = Popup(title="QR / Barkod Kamera Tara", content=content, size_hint=(0.9, 0.7))
+        btn_kapat.bind(on_release=popup.dismiss)
+        popup.open()
 
     def parca_ekle_sayfasina_git(self, instance):
         self.manager.current = 'parca_ekle'
