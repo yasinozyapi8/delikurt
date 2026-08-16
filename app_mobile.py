@@ -1,4 +1,3 @@
-import os
 import io
 import kivy
 import requests
@@ -23,6 +22,7 @@ FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/d
 
 
 class RotatedCamera(Camera):
+    """Açı Düzeltmeli Kamera"""
     def __init__(self, angle=-90, **kwargs):
         super().__init__(**kwargs)
         self.allow_stretch = True
@@ -39,6 +39,7 @@ class RotatedCamera(Camera):
 
 
 class CameraScanWidget(FloatLayout):
+    """Kamera ve Yeşil Çerçeve Ekranı"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
@@ -56,7 +57,7 @@ class CameraScanWidget(FloatLayout):
             self.add_widget(Label(text="Kamera başlatılamadı.", pos_hint={'center_x': 0.5, 'center_y': 0.5}))
 
         with self.canvas.after:
-            Color(0.12, 0.85, 0.38, 1)
+            Color(0.12, 0.85, 0.38, 1) # Neon Yeşil
             self.line = Line(width=4)
             
         self.bind(pos=self.update_frame, size=self.update_frame)
@@ -347,51 +348,47 @@ class AnaStokEkrani(Screen):
         popup = Popup(title="QR / Barkod Kamera Tara", content=content, size_hint=(0.98, 0.95))
         
         def qr_tara_islem(btn):
-            if cam_widget.cam:
+            if cam_widget.cam and cam_widget.cam.texture:
                 try:
                     btn_tara.text = "İşleniyor..."
-                    temp_path = "temp_scan.png"
-                    cam_widget.cam.export_to_png(temp_path)
                     
-                    if os.path.exists(temp_path):
-                        img = Image.open(temp_path)
-                        # Dikey açı için resmi çevir
-                        img_rotated = img.rotate(-90, expand=True)
+                    # 1. Kameranın anlık dokusunu doğrudan RAM'den çek
+                    tex = cam_widget.cam.texture
+                    size = tex.size
+                    pixels = tex.pixels
+                    
+                    if not pixels:
+                        btn_tara.text = "Kamera Hazır Değil"
+                        return
+
+                    # 2. Pikselleri Pillow resmine dönüştür
+                    img = Image.frombytes('RGBA', size, pixels)
+                    img = img.convert('RGB')
+                    
+                    # 3. Açıyı dikleştirmek için döndür
+                    img_rotated = img.rotate(-90, expand=True)
+                    
+                    # 4. Bellekte hızlı JPEG'e çevir
+                    buffer = io.BytesIO()
+                    img_rotated.save(buffer, format="JPEG", quality=80)
+                    buffer.seek(0)
+                    
+                    # 5. API'ye gönder
+                    res = requests.post("https://api.qrserver.com/v1/read-qr-code/", files={'file': ('scan.jpg', buffer, 'image/jpeg')}, timeout=5)
+                    
+                    if res.status_code == 200:
+                        res_json = res.json()
+                        symbol = res_json[0].get('symbol', [{}])[0]
+                        parsed_text = symbol.get('data')
                         
-                        # Yeşil çerçevenin iç alanını KIRP (Sadece QR odaklansın)
-                        w, h = img_rotated.size
-                        crop_size = int(min(w, h) * 0.6)
-                        left = (w - crop_size) // 2
-                        top = (h - crop_size) // 2
-                        right = left + crop_size
-                        bottom = top + crop_size
-                        
-                        img_cropped = img_rotated.crop((left, top, right, bottom))
-                        
-                        buffer = io.BytesIO()
-                        img_cropped.save(buffer, format="PNG")
-                        buffer.seek(0)
-                        
-                        res = requests.post("https://api.qrserver.com/v1/read-qr-code/", files={'file': ('scan.png', buffer, 'image/png')}, timeout=6)
-                        
-                        if res.status_code == 200:
-                            res_json = res.json()
-                            symbol = res_json[0].get('symbol', [{}])[0]
-                            parsed_text = symbol.get('data')
-                            
-                            if parsed_text:
-                                self.txt_scan.text = parsed_text
-                                popup.dismiss()
-                                if os.path.exists(temp_path):
-                                    os.remove(temp_path)
-                                return
-                        
-                        if os.path.exists(temp_path):
-                            os.remove(temp_path)
+                        if parsed_text:
+                            self.txt_scan.text = parsed_text
+                            popup.dismiss()
+                            return
                 except Exception as e:
                     print(f"QR İşleme Hatası: {e}")
                     
-            btn_tara.text = "Tekrar Dene"
+            btn_tara.text = "Tekrar Dene (Okunmadı)"
 
         btn_tara.bind(on_release=qr_tara_islem)
         btn_kapat.bind(on_release=popup.dismiss)
