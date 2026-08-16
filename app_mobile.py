@@ -13,63 +13,73 @@ from kivy.uix.popup import Popup
 
 Window.clearcolor = (0.1, 0.12, 0.15, 1)
 
-# --- FIREBASE BİLGİLERİNİZ ---
-FIREBASE_URL = "https://stok-takip-f061b-default-rtdb.firebaseio.com/stoklar"
-FIREBASE_API_KEY = "AIzaSyCxg29J4To7hVgXxHOhAY76oOwDcZqyvRY"
+# Cloud Firestore REST API Bağlantısı (stok-takip-f061b projesi için)
+FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/databases/(default)/documents/stoklar"
 
 
-class FirebaseManager:
-    """API Key ile Anonim Oturum Açma ve Güvenli Veri İşlemleri"""
-    id_token = None
+class FirestoreManager:
+    """Firestore REST API Veri Dönüştürücü ve Yönetici"""
 
-    @classmethod
-    def oturum_ac(cls):
-        """Web API Key kullanarak Firebase Auth üzerinden geçici ID Token alır"""
-        auth_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_API_KEY}"
-        try:
-            res = requests.post(auth_url, json={"returnSecureToken": True}, timeout=5)
-            if res.status_code == 200:
-                cls.id_token = res.json().get("idToken")
-                print("Firebase Oturumu Başarıyla Açıldı.")
-                return True
+    @staticmethod
+    def _parse_firestore_doc(doc):
+        """Firestore JSON formatını standart Python sözlüğüne çevirir"""
+        fields = doc.get("fields", {})
+        data = {}
+        for key, val in fields.items():
+            if "stringValue" in val:
+                data[key] = val["stringValue"]
+            elif "integerValue" in val:
+                data[key] = int(val["integerValue"])
+            elif "doubleValue" in val:
+                data[key] = float(val["doubleValue"])
+        
+        # Doküman ID'sini al (Örn: BV-1430)
+        doc_id = doc.get("name", "").split("/")[-1]
+        data["doc_id"] = doc_id
+        return doc_id, data
+
+    @staticmethod
+    def _build_firestore_fields(data):
+        """Python sözlüğünü Firestore JSON formatına dönüştürür"""
+        fields = {}
+        for key, val in data.items():
+            if isinstance(val, int):
+                fields[key] = {"integerValue": str(val)}
+            elif isinstance(val, float):
+                fields[key] = {"doubleValue": val}
             else:
-                print(f"Oturum Açma Hatası: {res.text}")
-                return False
-        except Exception as e:
-            print(f"Oturum Bağlantı Hatası: {e}")
-            return False
+                fields[key] = {"stringValue": str(val)}
+        return {"fields": fields}
 
     @classmethod
     def tum_stoklari_getir(cls):
-        if not cls.id_token:
-            if not cls.oturum_ac():
-                return {}
-
+        """Firestore 'stoklar' koleksiyonundaki tüm belgeleri çeker"""
         try:
-            url = f"{FIREBASE_URL}.json?auth={cls.id_token}"
-            response = requests.get(url, timeout=5)
-            if response.status_code == 200 and response.json():
-                return response.json()
-            elif response.status_code == 401:  # Token süresi dolmuşsa yenile
-                cls.oturum_ac()
-                return cls.tum_stoklari_getir()
+            res = requests.get(FIRESTORE_URL, timeout=5)
+            if res.status_code == 200:
+                docs = res.json().get("documents", [])
+                stok_dict = {}
+                for doc in docs:
+                    doc_id, data = cls._parse_firestore_doc(doc)
+                    # Barkod veya Parça Kodu anahtar olarak kullanılır
+                    barkod_key = data.get("barkod") or data.get("parca_kodu") or doc_id
+                    stok_dict[barkod_key] = data
+                return stok_dict
             return {}
         except Exception as e:
-            print(f"Firebase Bağlantı Hatası: {e}")
+            print(f"Firestore Bağlantı Hatası: {e}")
             return {}
 
     @classmethod
-    def urun_kaydet_veya_guncelle(cls, barkod, urun_data):
-        if not cls.id_token:
-            if not cls.oturum_ac():
-                return False
-
+    def urun_kaydet_veya_guncelle(cls, doc_id, urun_data):
+        """Ürünü Firestore üzerine kaydeder veya günceller (PATCH)"""
         try:
-            url = f"{FIREBASE_URL}/{barkod}.json?auth={cls.id_token}"
-            response = requests.put(url, json=urun_data, timeout=5)
-            return response.status_code == 200
+            url = f"{FIRESTORE_URL}/{doc_id}"
+            payload = cls._build_firestore_fields(urun_data)
+            res = requests.patch(url, json=payload, timeout=5)
+            return res.status_code == 200
         except Exception as e:
-            print(f"Firebase Kayıt Hatası: {e}")
+            print(f"Firestore Kayıt Hatası: {e}")
             return False
 
 
@@ -80,9 +90,10 @@ class AnaStokEkrani(Screen):
         
         main_layout = BoxLayout(orientation='vertical', padding=12, spacing=10)
         
+        # Arama / Barkod Alanı
         scan_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None, height='48dp')
         self.txt_scan = TextInput(
-            hint_text='Barkod / QR Girin...',
+            hint_text='Barkod / Parça Kodu Girin...',
             multiline=False,
             font_size='16sp',
             size_hint_x=0.72,
@@ -103,7 +114,7 @@ class AnaStokEkrani(Screen):
         main_layout.add_widget(scan_box)
         
         main_layout.add_widget(Label(
-            text="GÜVENLİ STOK LİSTESİ", 
+            text="FIRESTORE STOK LİSTESİ", 
             size_hint_y=None, 
             height='30dp', 
             bold=True,
@@ -137,24 +148,30 @@ class AnaStokEkrani(Screen):
 
     def stok_listesini_yenile(self):
         self.grid_stok.clear_widgets()
-        stoklar = FirebaseManager.tum_stoklari_getir()
+        stoklar = FirestoreManager.tum_stoklari_getir()
         
         if not stoklar:
-            self.grid_stok.add_widget(Label(text="Listelenecek ürün bulunamadı veya bağlantı yok.", size_hint_y=None, height='40dp'))
+            self.grid_stok.add_widget(Label(text="Firestore'da kayıtlı ürün bulunamadı.", size_hint_y=None, height='40dp'))
             return
 
-        for barkod, bilgi in stoklar.items():
-            if isinstance(bilgi, dict):
-                item_box = BoxLayout(orientation='horizontal', size_hint_y=None, height='45dp', padding=5)
-                lbl = Label(
-                    text=f"[{barkod}] {bilgi.get('ad', '-') } | Kat: {bilgi.get('kategori', 'Genel')} | Raf: {bilgi.get('raf', '-')} | Stok: {bilgi.get('stok', 0)}",
-                    halign='left',
-                    valign='middle',
-                    font_size='14sp'
-                )
-                lbl.bind(size=lbl.setter('text_size'))
-                item_box.add_widget(lbl)
-                self.grid_stok.add_widget(item_box)
+        for key, bilgi in stoklar.items():
+            item_box = BoxLayout(orientation='horizontal', size_hint_y=None, height='45dp', padding=5)
+            
+            # Firestore şemanıza uygun alan isimleri
+            ad = bilgi.get('parca_adi') or bilgi.get('ad') or '-'
+            kat = bilgi.get('kategori', 'Genel')
+            raf = bilgi.get('raf_konumu') or bilgi.get('raf') or '-'
+            stok = bilgi.get('stok') if bilgi.get('stok') is not None else bilgi.get('miktar', 0)
+            
+            lbl = Label(
+                text=f"[{key}] {ad} | Kat: {kat} | Raf: {raf} | Stok: {stok}",
+                halign='left',
+                valign='middle',
+                font_size='14sp'
+            )
+            lbl.bind(size=lbl.setter('text_size'))
+            item_box.add_widget(lbl)
+            self.grid_stok.add_widget(item_box)
 
     def barkod_isle(self, instance):
         barkod = self.txt_scan.text.strip()
@@ -216,13 +233,13 @@ class ParcaEkleEkrani(Screen):
             form_layout.add_widget(inp)
             return inp
 
-        self.txt_ad = create_field("Parça Adı:", "Örn: Rulman 6204")
-        self.txt_kod = create_field("Parça Kodu:", "Örn: PRC-001")
-        self.txt_barkod = create_field("Barkod / QR:", "Örn: 86900012345")
-        self.txt_kategori = create_field("Kategori:", "Örn: Rulman / Filtre")
-        self.txt_raf = create_field("Raf Numarası:", "Örn: A-12")
-        self.txt_stok = create_field("Mevcut Stok Adedi:", "Örn: 10", is_num=True)
-        self.txt_kritik = create_field("Kritik Stok Uyarısı Sınırı:", "Örn: 5", is_num=True)
+        self.txt_ad = create_field("Parça Adı:", "Örn: Blok Vidası 1,4x3,0mm")
+        self.txt_kod = create_field("Parça Kodu (Doküman ID):", "Örn: BV-1430")
+        self.txt_barkod = create_field("Barkod / QR:", "Örn: 869000111")
+        self.txt_kategori = create_field("Kategori:", "Örn: Vida")
+        self.txt_raf = create_field("Raf Konumu:", "Örn: C-2b")
+        self.txt_stok = create_field("Mevcut Stok Adedi:", "Örn: 5", is_num=True)
+        self.txt_kritik = create_field("Kritik Stok Sınırı:", "Örn: 5", is_num=True)
         
         scroll.add_widget(form_layout)
         main_layout.add_widget(scroll)
@@ -254,24 +271,32 @@ class ParcaEkleEkrani(Screen):
         self.add_widget(main_layout)
 
     def parca_kaydet(self, instance):
+        kod = self.txt_kod.text.strip()
         barkod = self.txt_barkod.text.strip()
         ad = self.txt_ad.text.strip()
-        kod = self.txt_kod.text.strip()
         kategori = self.txt_kategori.text.strip() or "Genel"
         raf = self.txt_raf.text.strip()
         stok = int(self.txt_stok.text) if self.txt_stok.text else 1
         kritik = int(self.txt_kritik.text) if self.txt_kritik.text else 5
         
-        if barkod and ad:
+        doc_id = kod or barkod
+        
+        if doc_id and ad:
             urun_data = {
                 "ad": ad,
-                "kod": kod,
+                "parca_adi": ad,
+                "parca_kodu": kod,
+                "barkod": barkod,
+                "barkod_no": kod,
                 "kategori": kategori,
+                "raf_konumu": raf,
                 "raf": raf,
                 "stok": stok,
-                "kritik": kritik
+                "miktar": stok,
+                "kritik_stok": kritik,
+                "kritik_seviye": kritik
             }
-            if FirebaseManager.urun_kaydet_veya_guncelle(barkod, urun_data):
+            if FirestoreManager.urun_kaydet_veya_guncelle(doc_id, urun_data):
                 self.formu_temizle()
                 self.manager.current = 'stok_liste'
 
@@ -301,17 +326,21 @@ class MobileApp(App):
 
     def process_barcode_scan(self, barcode_data):
         barcode = str(barcode_data).strip()
-        stoklar = FirebaseManager.tum_stoklari_getir()
+        stoklar = FirestoreManager.tum_stoklari_getir()
         
         if barcode in stoklar:
             self.show_stock_update_popup(barcode, stoklar[barcode])
         else:
             self.parca_ekrani.txt_barkod.text = barcode
+            self.parca_ekrani.txt_kod.text = barcode
             self.sm.current = 'parca_ekle'
 
-    def show_stock_update_popup(self, barcode, urun):
+    def show_stock_update_popup(self, doc_id, urun):
+        ad = urun.get('parca_adi') or urun.get('ad') or '-'
+        mevcut_stok = urun.get('stok') if urun.get('stok') is not None else urun.get('miktar', 0)
+        
         layout = BoxLayout(orientation='vertical', spacing=10, padding=15)
-        layout.add_widget(Label(text=f"Ürün: {urun.get('ad', '-')}\nMevcut Stok: {urun.get('stok', 0)}", font_size='16sp'))
+        layout.add_widget(Label(text=f"Ürün: {ad}\nMevcut Stok: {mevcut_stok}", font_size='16sp'))
         
         qty_input = TextInput(text="1", input_filter="int", multiline=False, font_size='20sp', halign='center')
         layout.add_widget(qty_input)
@@ -329,12 +358,12 @@ class MobileApp(App):
         def update_qty(is_addition):
             try:
                 miktar = int(qty_input.text) if qty_input.text else 0
-                mevcut = urun.get('stok', 0)
-                yeni_stok = (mevcut + miktar) if is_addition else max(0, mevcut - miktar)
+                yeni_stok = (mevcut_stok + miktar) if is_addition else max(0, mevcut_stok - miktar)
                 
                 urun['stok'] = yeni_stok
-                FirebaseManager.urun_kaydet_veya_guncelle(barcode, urun)
+                urun['miktar'] = yeni_stok
                 
+                FirestoreManager.urun_kaydet_veya_guncelle(doc_id, urun)
                 self.stok_ekrani.stok_listesini_yenile()
                 popup.dismiss()
             except ValueError:
