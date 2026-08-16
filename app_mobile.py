@@ -1,9 +1,11 @@
+import os
 import kivy
 import requests
 from kivy.app import App
 from kivy.core.window import Window
 from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
@@ -11,7 +13,7 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 from kivy.uix.camera import Camera
-from kivy.graphics import Color, Rectangle, PushMatrix, Rotate, PopMatrix
+from kivy.graphics import Color, Rectangle, PushMatrix, Rotate, PopMatrix, Line
 
 Window.clearcolor = (0.1, 0.12, 0.15, 1)
 
@@ -31,6 +33,43 @@ class RotatedCamera(Camera):
 
     def _update_rot(self, *args):
         self.rot.origin = self.center
+
+
+class CameraScanWidget(FloatLayout):
+    """Yeşil Hedef Çerçeveli Büyütülmüş Kamera Görünümü"""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
+        try:
+            self.cam = RotatedCamera(angle=-90, play=True, resolution=(1280, 720), size_hint=(1, 1), pos_hint={'center_x': 0.5, 'center_y': 0.5})
+            self.add_widget(self.cam)
+        except Exception:
+            self.cam = None
+            self.add_widget(Label(text="Kamera başlatılamadı veya izin verilmedi.", pos_hint={'center_x': 0.5, 'center_y': 0.5}))
+
+        # Yeşil Odak Çerçevesi
+        with self.canvas.after:
+            Color(0.12, 0.85, 0.38, 1) # Neon Yeşil
+            self.line = Line(width=3)
+            
+        self.bind(pos=self.update_frame, size=self.update_frame)
+
+        # Üst Bilgi Yazısı
+        lbl = Label(
+            text="QR / Barkodu Yeşil Çerçeveye Hizalayın",
+            size_hint=(1, None),
+            height='30dp',
+            pos_hint={'top': 0.98, 'center_x': 0.5},
+            bold=True,
+            color=(1, 1, 1, 0.9),
+            font_size='15sp'
+        )
+        self.add_widget(lbl)
+
+    def update_frame(self, *args):
+        cx, cy = self.center
+        w = min(self.width * 0.7, 260)
+        self.line.rectangle = (cx - w/2, cy - w/2, w, w)
 
 
 class FirestoreManager:
@@ -109,7 +148,7 @@ class AnaStokEkrani(Screen):
         )
         main_layout.add_widget(title)
         
-        # Arama + Kamera Üst Barı
+        # Arama Barı
         scan_box = BoxLayout(orientation='horizontal', spacing=5, size_hint_y=None, height='50dp')
         
         self.txt_scan = TextInput(
@@ -272,26 +311,63 @@ class AnaStokEkrani(Screen):
             self.stok_verilerini_yukle()
 
     def kamera_popup_ac(self, instance):
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = BoxLayout(orientation='vertical', spacing=8, padding=5)
         
-        try:
-            # Sola yatık görüntüyü düzeltmek için RotatedCamera (-90 derece) kullanılır
-            cam = RotatedCamera(angle=-90, play=True, resolution=(640, 480))
-            content.add_widget(cam)
-        except Exception as e:
-            content.add_widget(Label(text="Kamera başlatılamadı veya izin verilmedi."))
+        cam_widget = CameraScanWidget()
+        content.add_widget(cam_widget)
 
+        btn_box = BoxLayout(spacing=10, size_hint_y=None, height='50dp')
+        
+        btn_tara = Button(
+            text="📷 TARA / OKU", 
+            background_normal='',
+            background_color=(0.12, 0.68, 0.32, 1),
+            bold=True,
+            font_size='16sp'
+        )
         btn_kapat = Button(
             text="Kapat", 
-            size_hint_y=None, 
-            height='45dp', 
             background_normal='',
             background_color=(0.85, 0.22, 0.2, 1),
-            bold=True
+            bold=True,
+            font_size='16sp'
         )
-        content.add_widget(btn_kapat)
         
-        popup = Popup(title="QR / Barkod Kamera Tara", content=content, size_hint=(0.9, 0.7))
+        btn_box.add_widget(btn_tara)
+        btn_box.add_widget(btn_kapat)
+        content.add_widget(btn_box)
+        
+        popup = Popup(title="QR / Barkod Kamera Tara", content=content, size_hint=(0.95, 0.90))
+        
+        def qr_tara_islem(btn):
+            if cam_widget.cam:
+                try:
+                    btn_tara.text = "Taranıyor..."
+                    temp_path = "temp_scan.png"
+                    cam_widget.cam.export_to_png(temp_path)
+                    
+                    if os.path.exists(temp_path):
+                        with open(temp_path, 'rb') as f:
+                            res = requests.post("https://api.qrserver.com/v1/read-qr-code/", files={'file': f}, timeout=5)
+                            
+                        if res.status_code == 200:
+                            res_json = res.json()
+                            parsed_text = res_json[0]['symbol'][0]['data']
+                            if parsed_text:
+                                self.txt_scan.text = parsed_text
+                                popup.dismiss()
+                                if os.path.exists(temp_path):
+                                    os.remove(temp_path)
+                                return
+                        
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
+                except Exception as e:
+                    print(f"QR Okuma Hatası: {e}")
+                    
+            btn_tara.text = "Tekrar Dene"
+
+        btn_tara.bind(on_release=qr_tara_islem)
         btn_kapat.bind(on_release=popup.dismiss)
         popup.open()
 
