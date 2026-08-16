@@ -23,11 +23,12 @@ FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/d
 
 
 class RotatedCamera(Camera):
-    """Android Dikey Ekran İçin Tam Ekran Açı Düzeltmeli Kamera"""
+    """Kamera açısını ve oranını düzelten sınıf"""
     def __init__(self, angle=-90, **kwargs):
         super().__init__(**kwargs)
-        self.allow_stretch = True
-        self.keep_ratio = False
+        # Görüntünün esnemesini önlemek için ratio'yu koruyoruz
+        self.allow_stretch = False
+        self.keep_ratio = True 
         with self.canvas.before:
             PushMatrix()
             self.rot = Rotate(angle=angle, axis=(0, 0, 1))
@@ -40,15 +41,15 @@ class RotatedCamera(Camera):
 
 
 class CameraScanWidget(FloatLayout):
-    """Genişletilmiş Kamera ve Yeşil Odak Çerçevesi"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
         try:
+            # Çözünürlüğü standart 640x480'e çektik (Daha kararlı)
             self.cam = RotatedCamera(
                 angle=-90, 
                 play=True, 
-                resolution=(1280, 720), 
+                resolution=(640, 480), 
                 size_hint=(1, 1), 
                 pos_hint={'center_x': 0.5, 'center_y': 0.5}
             )
@@ -63,22 +64,11 @@ class CameraScanWidget(FloatLayout):
             
         self.bind(pos=self.update_frame, size=self.update_frame)
 
-        lbl = Label(
-            text="QR / Barkodu Yeşil Çerçeveye Hizalayın",
-            size_hint=(1, None),
-            height='35dp',
-            pos_hint={'top': 0.99, 'center_x': 0.5},
-            bold=True,
-            color=(1, 1, 1, 0.95),
-            font_size='16sp'
-        )
-        self.add_widget(lbl)
-
     def update_frame(self, *args):
         cx, cy = self.center
-        w = min(self.width * 0.85, self.height * 0.55)
+        # Çerçeveyi kamera görüntüsü içinde daha dengeli boyutlandırdık
+        w = min(self.width * 0.7, self.height * 0.7)
         self.line.rectangle = (cx - w/2, cy - w/2, w, w)
-
 
 class FirestoreManager:
     @staticmethod
