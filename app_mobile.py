@@ -23,11 +23,10 @@ FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/d
 
 
 class RotatedCamera(Camera):
-    """Oranları Koruyan ve Alanı Tam Dolduran Açı Düzeltmeli Kamera"""
     def __init__(self, angle=-90, **kwargs):
         super().__init__(**kwargs)
         self.allow_stretch = True
-        self.keep_ratio = True  # Görüntü bozulmasını engeller
+        self.keep_ratio = True
         with self.canvas.before:
             PushMatrix()
             self.rot = Rotate(angle=angle, axis=(0, 0, 1))
@@ -40,7 +39,6 @@ class RotatedCamera(Camera):
 
 
 class CameraScanWidget(FloatLayout):
-    """Yeşil Çerçevesi Kamera Görüntüsünün İçine Tam Oturan Görünüm"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
@@ -57,9 +55,8 @@ class CameraScanWidget(FloatLayout):
             self.cam = None
             self.add_widget(Label(text="Kamera başlatılamadı.", pos_hint={'center_x': 0.5, 'center_y': 0.5}))
 
-        # Yeşil Odak Çerçevesi
         with self.canvas.after:
-            Color(0.12, 0.85, 0.38, 1) # Neon Yeşil
+            Color(0.12, 0.85, 0.38, 1)
             self.line = Line(width=4)
             
         self.bind(pos=self.update_frame, size=self.update_frame)
@@ -81,9 +78,8 @@ class CameraScanWidget(FloatLayout):
         if not hasattr(self, 'cam') or not self.cam:
             return
         cx, cy = self.center
-        # Çerçeve boyutunu doğrudan kamera beslemesinin kendi en/boy oranına bağladık
         cam_min_side = min(self.cam.width, self.cam.height)
-        w = max(180, cam_min_side * 0.65) # Yeşil çerçeve kameranın tam içine sığar
+        w = max(180, cam_min_side * 0.65)
         self.line.rectangle = (cx - w/2, cy - w/2, w, w)
 
 
@@ -359,13 +355,24 @@ class AnaStokEkrani(Screen):
                     
                     if os.path.exists(temp_path):
                         img = Image.open(temp_path)
+                        # Dikey açı için resmi çevir
                         img_rotated = img.rotate(-90, expand=True)
                         
+                        # Yeşil çerçevenin iç alanını KIRP (Sadece QR odaklansın)
+                        w, h = img_rotated.size
+                        crop_size = int(min(w, h) * 0.6)
+                        left = (w - crop_size) // 2
+                        top = (h - crop_size) // 2
+                        right = left + crop_size
+                        bottom = top + crop_size
+                        
+                        img_cropped = img_rotated.crop((left, top, right, bottom))
+                        
                         buffer = io.BytesIO()
-                        img_rotated.save(buffer, format="PNG")
+                        img_cropped.save(buffer, format="PNG")
                         buffer.seek(0)
                         
-                        res = requests.post("https://api.qrserver.com/v1/read-qr-code/", files={'file': ('scan.png', buffer, 'image/png')}, timeout=5)
+                        res = requests.post("https://api.qrserver.com/v1/read-qr-code/", files={'file': ('scan.png', buffer, 'image/png')}, timeout=6)
                         
                         if res.status_code == 200:
                             res_json = res.json()
