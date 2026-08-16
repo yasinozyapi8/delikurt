@@ -39,7 +39,6 @@ class SplashEkrani(Screen):
             spacing=15
         )
         
-        # Uygulama Logosu
         app_logo = KivyImage(
             source='app_icon.png',
             size_hint=(None, 1),
@@ -48,7 +47,6 @@ class SplashEkrani(Screen):
             keep_ratio=True
         )
         
-        # Başlık Metni
         title_lbl = Label(
             text="Stok Takip\nSistemi",
             font_size='26sp',
@@ -72,7 +70,6 @@ class SplashEkrani(Screen):
             spacing=5
         )
         
-        # Delikurt Stüdyo Logosu
         delikurt_logo = KivyImage(
             source='delikurt_studyo.png',
             size_hint=(1, None),
@@ -81,7 +78,6 @@ class SplashEkrani(Screen):
             keep_ratio=True
         )
         
-        # Delikurt İmza
         delikurt_imza = KivyImage(
             source='delikurt_imza.png',
             size_hint=(1, None),
@@ -97,7 +93,6 @@ class SplashEkrani(Screen):
         self.add_widget(layout)
 
     def on_enter(self):
-        # 2.5 Saniye Sonra Ana Stok Listesine Yumuşak Geçiş Yap
         Clock.schedule_once(self.ana_ekrana_gec, 2.5)
 
     def ana_ekrana_gec(self, dt):
@@ -114,7 +109,6 @@ class LongPressLabel(Label):
 
     def on_touch_down(self, touch):
         if self.collide_point(*touch.pos):
-            # Süreyi 0.3 saniyeye çektik (Hızlı tepki)
             self._clock = Clock.schedule_once(lambda dt: self._trigger_long_press(), 0.3)
             return True
         return super().on_touch_down(touch)
@@ -402,8 +396,9 @@ class AnaStokEkrani(Screen):
                 font_size='18sp'
             )
             
-            btn_inc.bind(on_release=lambda x, d=doc_id, u=bilgi: self.stok_degistir(d, u, 1))
-            btn_dec.bind(on_release=lambda x, d=doc_id, u=bilgi: self.stok_degistir(d, u, -1))
+            # Artık doğrudan değiştirmiyor, Miktar Girmeli Pop-up açıyor
+            btn_inc.bind(on_release=lambda x, d=doc_id, u=bilgi: self.stok_miktar_popup_ac(d, u))
+            btn_dec.bind(on_release=lambda x, d=doc_id, u=bilgi: self.stok_miktar_popup_ac(d, u))
             
             btn_box.add_widget(btn_inc)
             btn_box.add_widget(btn_dec)
@@ -420,15 +415,88 @@ class AnaStokEkrani(Screen):
             Color(0.18, 0.22, 0.28, 1)
             Rectangle(pos=instance.pos, size=instance.size)
 
-    def stok_degistir(self, doc_id, urun_data, miktar_degisimi):
+    def stok_miktar_popup_ac(self, doc_id, urun_data):
+        """Toplu miktar artırma/azaltma pop-up ekranı"""
+        ad = urun_data.get('parca_adi') or urun_data.get('ad') or '-'
         mevcut_stok = urun_data.get('stok') if urun_data.get('stok') is not None else urun_data.get('miktar', 0)
-        yeni_stok = max(0, mevcut_stok + miktar_degisimi)
+
+        content = BoxLayout(orientation='vertical', spacing=10, padding=15)
         
-        urun_data['stok'] = yeni_stok
-        urun_data['miktar'] = yeni_stok
+        lbl_info = Label(
+            text=f"Parça: {ad}\nMevcut Stok: {mevcut_stok} Adet",
+            font_size='15sp',
+            bold=True,
+            halign='center'
+        )
+        content.add_widget(lbl_info)
+
+        lbl_hint = Label(text="İşlem Miktarını Girin:", font_size='14sp')
+        content.add_widget(lbl_hint)
+
+        txt_miktar = TextInput(
+            text='1',
+            multiline=False,
+            input_filter='int',
+            font_size='20sp',
+            halign='center',
+            size_hint_y=None,
+            height='45dp'
+        )
+        content.add_widget(txt_miktar)
+
+        btn_box = BoxLayout(spacing=10, size_hint_y=None, height='50dp')
         
-        if FirestoreManager.urun_kaydet_veya_guncelle(doc_id, urun_data):
-            self.stok_verilerini_yukle()
+        btn_artir = Button(
+            text="➕ Stok Artır",
+            background_normal='',
+            background_color=(0.12, 0.68, 0.32, 1),
+            bold=True
+        )
+        btn_azalt = Button(
+            text="➖ Stok Azalt",
+            background_normal='',
+            background_color=(0.85, 0.22, 0.2, 1),
+            bold=True
+        )
+        
+        btn_box.add_widget(btn_artir)
+        btn_box.add_widget(btn_azalt)
+        content.add_widget(btn_box)
+
+        btn_kapat = Button(
+            text="İptal",
+            size_hint_y=None,
+            height='40dp',
+            background_normal='',
+            background_color=(0.5, 0.5, 0.5, 1)
+        )
+        content.add_widget(btn_kapat)
+
+        popup = Popup(title="Stok Hareketi İşlemi", content=content, size_hint=(0.88, 0.45))
+
+        def stok_islem_yap(degisim_yonu):
+            try:
+                m = int(txt_miktar.text.strip())
+                if m <= 0:
+                    return
+            except ValueError:
+                return
+
+            fark = m if degisim_yonu == 'artir' else -m
+            yeni_stok = max(0, mevcut_stok + fark)
+            
+            urun_data['stok'] = yeni_stok
+            urun_data['miktar'] = yeni_stok
+
+            if FirestoreManager.urun_kaydet_veya_guncelle(doc_id, urun_data):
+                popup.dismiss()
+                self.stok_verilerini_yukle()
+
+        btn_artir.bind(on_release=lambda x: stok_islem_yap('artir'))
+        btn_azalt.bind(on_release=lambda x: stok_islem_yap('azalt'))
+        btn_kapat.bind(on_release=popup.dismiss)
+        
+        popup.open()
 
     def kamera_popup_ac(self, instance):
         content = BoxLayout(orientation='vertical', spacing=8, padding=5)
@@ -488,8 +556,25 @@ class AnaStokEkrani(Screen):
                         parsed_text = symbol.get('data')
                         
                         if parsed_text:
-                            self.txt_scan.text = parsed_text
                             popup.dismiss()
+                            q = parsed_text.strip().lower()
+                            
+                            # Taranan ürünü bulup doğrudan stok değiştirme pop-up'ını açar
+                            eslesen_doc_id = None
+                            eslesen_data = None
+                            
+                            for d_id, u_data in self.tum_stoklar_cache.items():
+                                b_no = str(u_data.get('barkod') or u_data.get('barkod_no') or '').lower()
+                                p_kod = str(u_data.get('parca_kodu') or u_data.get('kod') or '').lower()
+                                if q == b_no or q == p_kod or q == d_id.lower():
+                                    eslesen_doc_id = d_id
+                                    eslesen_data = u_data
+                                    break
+                            
+                            if eslesen_doc_id and eslesen_data:
+                                self.stok_miktar_popup_ac(eslesen_doc_id, eslesen_data)
+                            else:
+                                self.txt_scan.text = parsed_text
                             return
                 except Exception as e:
                     print(f"QR İşleme Hatası: {e}")
