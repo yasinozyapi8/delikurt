@@ -471,7 +471,8 @@ class KameraEkrani(Screen):
         self.layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
         self.layout.add_widget(Label(text="BARKOD / QR TARAMA VİZÖRÜ", font_size='18sp', size_hint_y=0.08, bold=True, color=(0.3, 0.7, 1, 1)))
 
-        self.cam_container = BoxLayout(size_hint=(1, 0.70))
+        self.cam_container = FloatLayout(size_hint=(1, 0.70))
+        self.cam_container.bind(size=self._kamera_boyutlandir, pos=self._kamera_boyutlandir)
         self.layout.add_widget(self.cam_container)
 
         scan_box = BoxLayout(orientation='horizontal', size_hint_y=0.10, spacing=6)
@@ -497,37 +498,41 @@ class KameraEkrani(Screen):
                     play=True, 
                     resolution=(1280, 720),
                     allow_stretch=True, 
-                    keep_ratio=False,
-                    size_hint=(1, 1),
-                    pos_hint={'x': 0, 'y': 0}
+                    keep_ratio=False
                 )
                 
-                # Kamera kadrajını dikey formata çevirmek için Rotate ekliyoruz
                 with self.camera.canvas.before:
                     PushMatrix()
-                    self.rot = Rotate(angle=-90, origin=self.camera.center)
+                    self.rot = Rotate(angle=-90)
                 with self.camera.canvas.after:
                     PopMatrix()
 
-                self.camera.bind(pos=self._rotation_merkezini_guncelle, size=self._rotation_merkezini_guncelle)
-                
-                vizor_box = FloatLayout(size_hint=(1, 1))
-                vizor_box.add_widget(self.camera)
-                
                 vizor = BarkodVizoru(size_hint=(1, 1), pos_hint={'x': 0, 'y': 0})
-                vizor_box.add_widget(vizor)
                 
                 self.cam_container.clear_widgets()
-                self.cam_container.add_widget(vizor_box)
+                self.cam_container.add_widget(self.camera)
+                self.cam_container.add_widget(vizor)
+                
+                Clock.schedule_once(lambda dt: self._kamera_boyutlandir(), 0.1)
             else:
                 self.camera.play = True
         except Exception as e:
             self.cam_container.clear_widgets()
             self.cam_container.add_widget(Label(text=f"Kamera Başlatılamadı:\n{e}"))
 
-    def _rotation_merkezini_guncelle(self, instance, value):
-        if hasattr(self, 'rot') and self.camera:
-            self.rot.origin = self.camera.center
+    def _kamera_boyutlandir(self, *args):
+        if hasattr(self, 'camera') and self.camera and self.cam_container:
+            cw, ch = self.cam_container.size
+            cx, cy = self.cam_container.pos
+
+            # 90 derece döndürülen kameranın fiziksel boyut çakışmasını engelleme
+            self.camera.size_hint = (None, None)
+            self.camera.width = ch
+            self.camera.height = cw
+            self.camera.center = (cx + cw / 2, cy + ch / 2)
+
+            if hasattr(self, 'rot'):
+                self.rot.origin = self.camera.center
 
     def barkod_isle(self, okunan_barkod):
         if not okunan_barkod: return
