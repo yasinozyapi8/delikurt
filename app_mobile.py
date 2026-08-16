@@ -79,6 +79,7 @@ class AnaStokEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = 'stok_liste'
+        self.tum_stoklar_cache = {}
         
         main_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
         
@@ -93,18 +94,20 @@ class AnaStokEkrani(Screen):
         )
         main_layout.add_widget(title)
         
-        # Arama + Kamera Üst Barı
+        # Arama Barı
         scan_box = BoxLayout(orientation='horizontal', spacing=5, size_hint_y=None, height='50dp')
         
         self.txt_scan = TextInput(
             hint_text='Barkod veya Parça Ara...',
             multiline=False,
             font_size='16sp',
-            size_hint_x=0.6,
+            size_hint_x=0.8,
             background_color=(0.05, 0.05, 0.05, 1),
             foreground_color=(1, 1, 1, 1),
             padding=[10, 12, 10, 10]
         )
+        # Yazı yazıldıkça anlık canlı filtreleme yapar
+        self.txt_scan.bind(text=self.anlik_arama_yap)
         
         btn_ara = Button(
             text='Ara',
@@ -114,21 +117,10 @@ class AnaStokEkrani(Screen):
             bold=True,
             font_size='16sp'
         )
-        btn_ara.bind(on_release=self.barkod_isle)
-        
-        btn_kamera = Button(
-            text='📷 Kamera',
-            size_hint_x=0.2,
-            background_normal='',
-            background_color=(0.85, 0.45, 0.1, 1),
-            bold=True,
-            font_size='15sp'
-        )
-        btn_kamera.bind(on_release=self.kamera_baslat)
+        btn_ara.bind(on_release=lambda x: self.filtrele_ve_goster(self.txt_scan.text.strip()))
         
         scan_box.add_widget(self.txt_scan)
         scan_box.add_widget(btn_ara)
-        scan_box.add_widget(btn_kamera)
         main_layout.add_widget(scan_box)
         
         # Stok Kartları ScrollView
@@ -139,7 +131,7 @@ class AnaStokEkrani(Screen):
         scroll.add_widget(self.grid_stok)
         main_layout.add_widget(scroll)
         
-        # Alt Yeşil Buton: + Yeni Yedek Parça Ekle
+        # Alt Yeşil Buton
         btn_go_add = Button(
             text='+ Yeni Yedek Parça Ekle',
             size_hint_y=None,
@@ -155,26 +147,41 @@ class AnaStokEkrani(Screen):
         self.add_widget(main_layout)
 
     def on_enter(self):
-        self.stok_listesini_yenile()
+        self.stok_verilerini_yukle()
 
-    def stok_listesini_yenile(self, arama_metni=""):
+    def stok_verilerini_yukle(self):
+        self.tum_stoklar_cache = FirestoreManager.tum_stoklari_getir()
+        self.filtrele_ve_goster(self.txt_scan.text.strip())
+
+    def anlik_arama_yap(self, instance, value):
+        self.filtrele_ve_goster(value.strip())
+
+    def filtrele_ve_goster(self, arama_metni=""):
         self.grid_stok.clear_widgets()
-        stoklar = FirestoreManager.tum_stoklari_getir()
         
-        if not stoklar:
+        if not self.tum_stoklar_cache:
             self.grid_stok.add_widget(Label(text="Kayıtlı ürün bulunamadı.", size_hint_y=None, height='40dp'))
             return
 
-        for doc_id, bilgi in stoklar.items():
+        bulunan_sayisi = 0
+        q = arama_metni.lower()
+
+        for doc_id, bilgi in self.tum_stoklar_cache.items():
             ad = bilgi.get('parca_adi') or bilgi.get('ad') or '-'
             kod = bilgi.get('parca_kodu') or bilgi.get('kod') or doc_id
             barkod = bilgi.get('barkod') or bilgi.get('barkod_no') or doc_id
             raf = bilgi.get('raf_konumu') or bilgi.get('raf') or '-'
             stok = bilgi.get('stok') if bilgi.get('stok') is not None else bilgi.get('miktar', 0)
             
-            # Filtreleme
-            if arama_metni and (arama_metni.lower() not in ad.lower() and arama_metni.lower() not in barkod.lower() and arama_metni.lower() not in kod.lower()):
-                continue
+            # Filtreleme Mantığı: Parça Adı, Kod, Barkod veya Raf Konumunda eşleşme arar
+            if q:
+                if (q not in ad.lower() and 
+                    q not in kod.lower() and 
+                    q not in barkod.lower() and 
+                    q not in raf.lower()):
+                    continue
+
+            bulunan_sayisi += 1
 
             # Kart Ana Kutu
             card = BoxLayout(orientation='horizontal', size_hint_y=None, height='80dp', padding=8, spacing=5)
@@ -224,6 +231,9 @@ class AnaStokEkrani(Screen):
 
             self.grid_stok.add_widget(card)
 
+        if bulunan_sayisi == 0 and q:
+            self.grid_stok.add_widget(Label(text=f"'{arama_metni}' kriterine uygun ürün bulunamadı.", size_hint_y=None, height='40dp'))
+
     def _update_rect(self, instance):
         instance.canvas.before.clear()
         with instance.canvas.before:
@@ -238,17 +248,7 @@ class AnaStokEkrani(Screen):
         urun_data['miktar'] = yeni_stok
         
         if FirestoreManager.urun_kaydet_veya_guncelle(doc_id, urun_data):
-            self.stok_listesini_yenile(self.txt_scan.text.strip())
-
-    def barkod_isle(self, instance):
-        metin = self.txt_scan.text.strip()
-        if metin:
-            App.get_running_app().process_barcode_scan(metin)
-
-    def kamera_baslat(self, instance):
-        metin = self.txt_scan.text.strip()
-        if metin:
-            App.get_running_app().process_barcode_scan(metin)
+            self.stok_verilerini_yukle()
 
     def parca_ekle_sayfasina_git(self, instance):
         self.manager.current = 'parca_ekle'
@@ -394,17 +394,6 @@ class MobileApp(App):
         self.sm.add_widget(self.stok_ekrani)
         self.sm.add_widget(self.parca_ekrani)
         return self.sm
-
-    def process_barcode_scan(self, barcode_data):
-        barcode = str(barcode_data).strip()
-        stoklar = FirestoreManager.tum_stoklari_getir()
-        
-        if barcode in stoklar:
-            self.stok_ekrani.stok_listesini_yenile(arama_metni=barcode)
-        else:
-            self.parca_ekrani.txt_barkod.text = barcode
-            self.parca_ekrani.txt_kod.text = barcode
-            self.sm.current = 'parca_ekle'
 
 
 if __name__ == '__main__':
