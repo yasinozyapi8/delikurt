@@ -241,7 +241,7 @@ android.accept_sdk_license = True
 #android.ouya.category = GAME
 
 # (str) Filename of OUYA Console icon. It must be a 732x412 png image.
-#android.ouya.icon.filename = %(source.dir)s//app_icon.png
+android.ouya.icon.filename = %(source.dir)s//app_icon.png
 
 # (str) XML file to include as an intent filters in <activity> tag
 #android.manifest.intent_filters =
