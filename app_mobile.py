@@ -21,9 +21,11 @@ FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/stok-takip-f061b/d
 
 
 class RotatedCamera(Camera):
-    """Android Dikey Ekran İçin Açı Düzeltmeli Kamera Bileşeni"""
+    """Android Dikey Ekran İçin Açı Düzeltmeli ve Tam Ekran Kamera"""
     def __init__(self, angle=-90, **kwargs):
         super().__init__(**kwargs)
+        self.allow_stretch = True
+        self.keep_ratio = False  # Kameranın tüm alanı doldurmasını sağlar
         with self.canvas.before:
             PushMatrix()
             self.rot = Rotate(angle=angle, axis=(0, 0, 1))
@@ -36,21 +38,27 @@ class RotatedCamera(Camera):
 
 
 class CameraScanWidget(FloatLayout):
-    """Yeşil Hedef Çerçeveli Büyütülmüş Kamera Görünümü"""
+    """Genişletilmiş Kamera ve Büyütülmüş Yeşil Çerçeve"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
         try:
-            self.cam = RotatedCamera(angle=-90, play=True, resolution=(1280, 720), size_hint=(1, 1), pos_hint={'center_x': 0.5, 'center_y': 0.5})
+            self.cam = RotatedCamera(
+                angle=-90, 
+                play=True, 
+                resolution=(1280, 720), 
+                size_hint=(1, 1), 
+                pos_hint={'center_x': 0.5, 'center_y': 0.5}
+            )
             self.add_widget(self.cam)
         except Exception:
             self.cam = None
             self.add_widget(Label(text="Kamera başlatılamadı veya izin verilmedi.", pos_hint={'center_x': 0.5, 'center_y': 0.5}))
 
-        # Yeşil Odak Çerçevesi
+        # Kalınlaştırılmış ve Büyütülmüş Yeşil Odak Çerçevesi
         with self.canvas.after:
             Color(0.12, 0.85, 0.38, 1) # Neon Yeşil
-            self.line = Line(width=3)
+            self.line = Line(width=4)
             
         self.bind(pos=self.update_frame, size=self.update_frame)
 
@@ -58,17 +66,18 @@ class CameraScanWidget(FloatLayout):
         lbl = Label(
             text="QR / Barkodu Yeşil Çerçeveye Hizalayın",
             size_hint=(1, None),
-            height='30dp',
-            pos_hint={'top': 0.98, 'center_x': 0.5},
+            height='35dp',
+            pos_hint={'top': 0.99, 'center_x': 0.5},
             bold=True,
-            color=(1, 1, 1, 0.9),
-            font_size='15sp'
+            color=(1, 1, 1, 0.95),
+            font_size='16sp'
         )
         self.add_widget(lbl)
 
     def update_frame(self, *args):
         cx, cy = self.center
-        w = min(self.width * 0.7, 260)
+        # Çerçeve boyutu ekran genişliği/yüksekliğine oranla daha büyük ayarlandı
+        w = min(self.width * 0.85, self.height * 0.55)
         self.line.rectangle = (cx - w/2, cy - w/2, w, w)
 
 
@@ -337,7 +346,7 @@ class AnaStokEkrani(Screen):
         btn_box.add_widget(btn_kapat)
         content.add_widget(btn_box)
         
-        popup = Popup(title="QR / Barkod Kamera Tara", content=content, size_hint=(0.95, 0.90))
+        popup = Popup(title="QR / Barkod Kamera Tara", content=content, size_hint=(0.98, 0.95))
         
         def qr_tara_islem(btn):
             if cam_widget.cam:
